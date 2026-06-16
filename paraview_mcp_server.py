@@ -634,6 +634,12 @@ def warp_by_vector(vector_field: str = None, scale_factor: float = 1.0) -> str:
     return message
 
 @mcp.tool()
+def clear_pipeline() -> str:
+    """Delete all sources and filters from the current pipeline."""
+    success, message = pv_manager.clear_pipeline()
+    return message
+
+@mcp.tool()
 def list_commands() -> str:
     """List all available commands in this ParaView MCP server."""
     commands = [
@@ -641,6 +647,7 @@ def list_commands() -> str:
         "load_data                    : Load data from a file (VTK, RAW, EXODUS, CSV, etc.)",
         "save_contour_as_stl          : Save the active surface/contour as an STL file",
         "get_available_arrays         : List all point and cell data arrays in the active source",
+        "clear_pipeline               : Delete all sources and filters from the current pipeline.",
 
         # Sources & Filters
         "create_source                : Create a geometric source (Sphere, Cone, Cylinder, Plane, Box)",
