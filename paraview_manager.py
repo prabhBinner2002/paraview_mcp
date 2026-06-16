@@ -900,6 +900,45 @@ class ParaViewManager:
             self.logger.error(f"get_data_bounds failed: {e}")
             return False, f"Error getting data bounds: {e}", None
 
+    def get_active_source_state(self):
+        """
+        Return the state of the currently active source.
+
+        Returns:
+            tuple: (success, message, state_dict)
+        """
+        try:
+            from paraview.simple import GetActiveSource, GetActiveView, GetDisplayProperties
+
+            source = GetActiveSource()
+            if not source:
+                return False, "No active source.", None
+
+            view = GetActiveView()
+            if not view:
+                return False, "No active view.", None
+
+            display = GetDisplayProperties(source, view)
+            if not display:
+                return False, "Could not get display properties.", None
+
+            color = None
+            if display.ColorArrayName and len(display.ColorArrayName) > 1:
+                color = display.ColorArrayName[1] or None
+
+            state = {
+                "name": self._get_source_name(source),
+                "type": source.__class__.__name__,
+                "visible": bool(display.Visibility),
+                "representation": display.GetRepresentationType(),
+                "opacity": display.Opacity,
+                "color_array": color,
+            }
+            return True, "OK", state
+        except Exception as e:
+            self.logger.error(f"Error getting active source state: {str(e)}")
+            return False, f"Error getting active source state: {str(e)}", None
+
     def set_representation_type(self, rep_type):
         """
         Set the representation type for the active source.

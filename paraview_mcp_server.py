@@ -457,24 +457,22 @@ def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "P
     return "\n".join(lines)
 
 @mcp.tool()
-def get_data_bounds() -> str:
+def get_active_source_state() -> str:
     """
-    Get the bounding box, center, and dimensions of the active dataset.
-    Use this before creating slices, streamlines, or photos to get exact coordinates.
-    
+    Get the current state of the active source: name, type, visibility,
+    representation, opacity, and active color array.
+
     Returns:
-        Structured report of X/Y/Z bounds, dataset center, size and grid extent.
+        State report for the active source only.
     """
-    success, message, r = pv_manager.get_data_bounds()
-    
+    success, message, s = pv_manager.get_active_source_state()
     if not success:
         return message
-    
-    b = r['bounds']
-    d = r['dimensions']
-    c = r['center']
-    
-    lines = []
+    return (
+        f"Name: {s['name']} | Type: {s['type']} | Visible: {s['visible']}\n"
+        f"Representation: {s['representation']} | Opacity: {s['opacity']}\n"
+        f"Color array: {s['color_array'] or 'solid color'}"
+    )
  
 @mcp.tool()
 def get_data_bounds() -> str:
@@ -565,7 +563,6 @@ def reset_camera() -> str:
     """
     success, message = pv_manager.reset_camera()
     return message
-
 
 @mcp.tool()
 def plot_over_line(point1: list[float] = None, point2: list[float] = None, resolution: int = 100) -> str:
