@@ -16,6 +16,8 @@ import os
 import sys
 import logging
 import argparse
+import base64
+import json
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
