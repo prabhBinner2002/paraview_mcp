@@ -1481,19 +1481,19 @@ class ParaViewManager:
             self.logger.error(f"Error setting gradient opacity: {str(e)}")
             return False, f"Error: {str(e)}"
         
-def clear_pipeline(self):
-    try:
-        from paraview.simple import GetSources, Delete, SetActiveSource
+    def clear_pipeline(self):
+        try:
+            from paraview.simple import GetSources, Delete, SetActiveSource
 
-        sources = GetSources()
-        if not sources:
-            return True, "Pipeline is already empty."
+            sources = GetSources()
+            if not sources:
+                return True, "Pipeline is already empty."
 
-        for (name, _), proxy in sources.items():
-            Delete(proxy)
+            for (name, _), proxy in sources.items():
+                Delete(proxy)
 
-        self.original_source = None
-        return True, "Pipeline cleared."
-    except Exception as e:
-        self.logger.error(f"Error clearing pipeline: {str(e)}")
-        return False, f"Error: {str(e)}"
+            self.original_source = None
+            return True, "Pipeline cleared."
+        except Exception as e:
+            self.logger.error(f"Error clearing pipeline: {str(e)}")
+            return False, f"Error: {str(e)}"
