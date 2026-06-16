@@ -633,38 +633,52 @@ def warp_by_vector(vector_field: str = None, scale_factor: float = 1.0) -> str:
 
 @mcp.tool()
 def list_commands() -> str:
-    """
-    List all available commands in this ParaView MCP server.
-    
-    Returns:
-        List of available commands
-    """
+    """List all available commands in this ParaView MCP server."""
     commands = [
-        "load_data: Load data from a file",
-        "create_source: Create a geometric source (Sphere, Cone, etc.)",
-        "create_isosurface: Create an isosurface visualization",
-        "create_slice: Create a slice through the data",
-        "toggle_volume_rendering: Enable or disable volume rendering",
-	    "toggle_visibility: Enable or disable visibility for the active source",
-        "set_active_source: Set the active pipeline object by name",
-        "get_active_source_names_by_type: Get a list of sources filtered by type",
-        "color_by: Color the visualization by a field",
-        # "set_color_map_preset: Set the color map preset",
-        "set_representation_type: Set the representation type (Surface, Wireframe, etc.)",
-        "edit_volume_opacity: Edit the opacity transfer function",
-        "get_pipeline: Get the current pipeline structure",
-        "get_available_arrays: Get available data arrays",
-        "create_streamline: Create stream line visualization",
-        "compute_surface_area: Compute the surface area of the active surface",
-        "save_contour_as_stl: Save the active surface as STL",
-        "get_screenshot: Capture a screenshot and display it in chat",
-        "rotate_camera: Rotate the camera view",
-        "reset_camera: Reset the camera to show all data",
-        "plot_line: Plot a line through the data",
-        "warp_by_vector: Warp the active source by a vector field",
+        # Data
+        "load_data                    : Load data from a file (VTK, RAW, EXODUS, CSV, etc.)",
+        "save_contour_as_stl          : Save the active surface/contour as an STL file",
+        "get_available_arrays         : List all point and cell data arrays in the active source",
+
+        # Sources & Filters
+        "create_source                : Create a geometric source (Sphere, Cone, Cylinder, Plane, Box)",
+        "create_isosurface            : Create an isosurface at a given scalar value",
+        "create_slice                 : Slice the volume with a plane",
+        "create_clip                  : Clip the active source with a plane (removes one side)",
+        "create_threshold             : Isolate geometry within a scalar value range",
+        "create_streamline            : Create streamline visualization from a vector field",
+        "warp_by_vector               : Warp the active source by a vector field",
+        "plot_over_line               : Sample and plot data along a line",
+
+        # Volume Rendering
+        "toggle_volume_rendering      : Enable or disable volume rendering",
+        "edit_volume_opacity          : Set the scalar opacity transfer function",
+        "set_color_map                : Set the color transfer function",
+        "get_gradient_stats           : Compute gradient magnitude stats (min/max/mean) for a field",
+        "set_gradient_opacity         : Enable gradient opacity to reveal surfaces in volume rendering",
+
+        # Pipeline & State
+        "get_pipeline                 : List all objects in the current pipeline",
+        "get_active_source_state      : Get name, type, visibility, representation, opacity, color array of active source",
+        "set_active_source            : Set the active pipeline object by name",
+        "get_active_source_names_by_type : List pipeline objects filtered by type",
+        "toggle_visibility            : Show or hide the active source",
+        "set_representation_type      : Set representation (Surface, Wireframe, Points, Volume, etc.)",
+        "color_by                     : Color the active source by a field",
+
+        # Analysis
+        "get_array_stats              : Get min, max, mean, std dev for a scalar field",
+        "get_histogram                : Compute and display a histogram for a scalar field",
+        "get_data_bounds              : Get bounding box, center, and dimensions of the active dataset",
+        "compute_surface_area         : Compute the surface area of the active surface mesh",
+
+        # Camera & Output
+        "get_screenshot               : Capture a screenshot of the current view",
+        "rotate_camera                : Rotate the camera by azimuth and elevation angles",
+        "reset_camera                 : Reset the camera to fit all data",
+        "export_animation             : Export a rotation animation as PNG frames or GIF",
     ]
-    
-    return "Available ParaView commands:\n\n" + "\n".join(commands)
+    return "Available ParaView MCP commands:\n\n" + "\n".join(commands)
 
 
 def main():
