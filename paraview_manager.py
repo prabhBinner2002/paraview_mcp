@@ -1416,32 +1416,31 @@ class ParaViewManager:
             self.logger.error(f"Error creating warp by vector: {str(e)}")
             return False, f"Error creating warp by vector: {str(e)}", None
 
-    def get_gradient_stats(self, field_name, smoothed=True):
+    def get_gradient_stats(self, field_name):
         try:
-            from paraview.simple import GetActiveSource, Gradient, UpdatePipeline
-            import paraview.servermanager as sm
-
+            from paraview.simple import GetActiveSource, Gradient, UpdatePipeline, Calculator
             source = GetActiveSource()
             if not source:
                 return False, "No active source.", None
 
             grad = Gradient(Input=source)
             grad.ScalarArray = ['POINTS', field_name]
-            grad.BoundaryMethod = 0 if smoothed else 1
-            UpdatePipeline(proxy=grad)
+            grad.ResultArrayName = f'{field_name}_Grad'
+            grad.BoundaryMethod = 0  # SMOOTHED, Default set to Non-Smoothed in paraview Properties
 
-            data = sm.Fetch(grad)
-            array = data.GetPointData().GetArray("Gradients")
-            if not array:
-                return False, "Gradient array not found.", None
+            calc = Calculator(Input=grad)
+            calc.ResultArrayName = 'Grad_Magnitude'
+            calc.Function = f'mag({field_name}_Grad)'
+            UpdatePipeline(proxy=calc)
 
-            n = array.GetNumberOfTuples()
-            magnitudes = []
-            for i in range(n):
-                x, y, z = array.GetTuple3(i)
-                magnitudes.append((x**2 + y**2 + z**2) ** 0.5)
+            array_info = (calc.GetDataInformation()
+                            .GetPointDataInformation()
+                            .GetArrayInformation('Grad_Magnitude'))
+            if not array_info:
+                return False, "Could not get gradient magnitude info.", None
 
-            return True, "OK", {"min": min(magnitudes), "max": max(magnitudes), "mean": sum(magnitudes) / n}
+            min_val, max_val = array_info.GetComponentRange(0)
+            return True, "OK", {"min": min_val, "max": max_val}
         except Exception as e:
             self.logger.error(f"Error computing gradient stats: {str(e)}")
             return False, f"Error: {str(e)}", None

@@ -423,7 +423,7 @@ def get_screenshot() -> str:
         
     base64_encoded = base64.b64encode(img_data).decode()
     
-    return json.dumps({success: True, "data": base64_encoded, "path": img_path, "media_type": "img/png"})
+    return json.dumps({"success": True, "data": base64_encoded, "path": img_path, "media_type": "img/png"})
  
 @mcp.tool()
 def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "POINTS") -> str:
@@ -439,8 +439,7 @@ def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "P
     Returns:
         ASCII bar chart of the histogram
     """
-    print(f"[DEBUG] get_histogram called: field={field}, bins={num_bins}", file=sys.stderr, flush=True)
-    
+
     success, message, histogram_data = pv_manager.get_histogram(field, num_bins, data_location)
     
     if not success or not histogram_data:
@@ -455,7 +454,7 @@ def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "P
         lines.append(f"  {center:8.2f} | {'#' * bar_len} ({int(freq)})")
         
         
-    print(f"[DEBUG] get_histogram result: success={success}, data_len={len(histogram_data) if histogram_data else 0}", file=sys.stderr, flush=True)
+    stderr, flush=True)
     return "\n".join(lines)
 
 @mcp.tool()
@@ -514,49 +513,22 @@ def get_data_bounds() -> str:
     return "\n".join(lines)
 
 @mcp.tool()
-def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "POINTS") -> str:
+def get_gradient_stats(field_name: str) -> str:
     """
-    Compute and display a histogram for a scalar field.
-    Shows where values cluster, essential before designing a transfer function.
-
-    Args:
-        field: Array name to compute the histogram for. Auto-detected if only one array exists.
-        num_bins: Number of histogram bins (default: 64).
-        data_location: "POINTS" or "CELLS" (default: "POINTS").
-
-    Returns:
-        ASCII bar chart of the histogram.
-    """
-    success, message, histogram_data = pv_manager.get_histogram(field, num_bins, data_location)
-    if not success or not histogram_data:
-        return message
-
-    max_freq = max(freq for _, freq in histogram_data) or 1
-    bar_width = 30
-    lines = [message, "", "Value       | Distribution"]
-    lines.append("-" * 50)
-    for center, freq in histogram_data:
-        bar_len = int((freq / max_freq) * bar_width)
-        lines.append(f"  {center:8.2f} | {'#' * bar_len} ({int(freq)})")
-    return "\n".join(lines)
-
-@mcp.tool()
-def get_gradient_stats(field_name: str, smoothed: bool = True) -> str:
-    """
-    Compute gradient magnitude stats (min, max, mean) for a scalar field.
+    Compute gradient magnitude stats (min, max) for a scalar field.
+    Call this before set_gradient_opacity to know the gradient range.
 
     Args:
         field_name: Scalar array to compute gradients for.
-        smoothed: True = SMOOTHED boundary (better for ImageData/RAW volumes).
     """
-    success, message, stats = pv_manager.get_gradient_stats(field_name, smoothed)
+    success, message, stats = pv_manager.get_gradient_stats(field_name)
     if not success:
         return message
     return (
         f"Gradient magnitude for '{field_name}':\n"
-        f"  min  = {stats['min']:.4g}\n"
-        f"  max  = {stats['max']:.4g}\n"
-        f"  mean = {stats['mean']:.4g}"
+        f"  min = {stats['min']:.4g}\n"
+        f"  max = {stats['max']:.4g}\n"
+        f"Use these values with set_gradient_opacity."
     )
 
 @mcp.tool()
@@ -653,8 +625,6 @@ def list_commands() -> str:
         "create_source                : Create a geometric source (Sphere, Cone, Cylinder, Plane, Box)",
         "create_isosurface            : Create an isosurface at a given scalar value",
         "create_slice                 : Slice the volume with a plane",
-        "create_clip                  : Clip the active source with a plane (removes one side)",
-        "create_threshold             : Isolate geometry within a scalar value range",
         "create_streamline            : Create streamline visualization from a vector field",
         "warp_by_vector               : Warp the active source by a vector field",
         "plot_over_line               : Sample and plot data along a line",
@@ -676,7 +646,6 @@ def list_commands() -> str:
         "color_by                     : Color the active source by a field",
 
         # Analysis
-        "get_array_stats              : Get min, max, mean, std dev for a scalar field",
         "get_histogram                : Compute and display a histogram for a scalar field",
         "get_data_bounds              : Get bounding box, center, and dimensions of the active dataset",
         "compute_surface_area         : Compute the surface area of the active surface mesh",
@@ -685,7 +654,6 @@ def list_commands() -> str:
         "get_screenshot               : Capture a screenshot of the current view",
         "rotate_camera                : Rotate the camera by azimuth and elevation angles",
         "reset_camera                 : Reset the camera to fit all data",
-        "export_animation             : Export a rotation animation as PNG frames or GIF",
     ]
     return "Available ParaView MCP commands:\n\n" + "\n".join(commands)
 
