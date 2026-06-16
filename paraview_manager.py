@@ -835,7 +835,70 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error computing histogram: {str(e)}")
             return False, f"Error computing histogram: {str(e)}", None
+        
+    def get_data_bounds(self):
+        """
+        Return bounding box, center, dimensions, point/cell counts, and grid extent.
 
+        Returns:
+            tuple: (success, message, result_dict)
+        """
+        try:
+            from paraview.simple import GetActiveSource
+            source = GetActiveSource()
+            if not source:
+                return False, "No active source. Load data first.", None
+
+            info = source.GetDataInformation()
+            b = info.GetBounds()  # [xmin, xmax, ymin, ymax, zmin, zmax]
+
+            bounds = {
+                "x": {"min": b[0], "max": b[1]},
+                "y": {"min": b[2], "max": b[3]},
+                "z": {"min": b[4], "max": b[5]},
+            }
+            center = [
+                (b[0] + b[1]) / 2,
+                (b[2] + b[3]) / 2,
+                (b[4] + b[5]) / 2,
+            ]
+            dims = {
+                "x": b[1] - b[0],
+                "y": b[3] - b[2],
+                "z": b[5] - b[4],
+            }
+
+            result = {
+                "bounds": bounds,
+                "center": center,
+                "dimensions": dims,
+                "number_of_points": info.GetNumberOfPoints(),
+                "number_of_cells": info.GetNumberOfCells(),
+            }
+
+            try:
+                e = info.GetExtent()  # [imin, imax, jmin, jmax, kmin, kmax]
+                result["extent"] = {
+                    "i": {"min": e[0], "max": e[1]},
+                    "j": {"min": e[2], "max": e[3]},
+                    "k": {"min": e[4], "max": e[5]},
+                }
+            except Exception:
+                pass
+
+            cx, cy, cz = center
+            message = (
+                f"X[{b[0]:.4f}, {b[1]:.4f}] "
+                f"Y[{b[2]:.4f}, {b[3]:.4f}] "
+                f"Z[{b[4]:.4f}, {b[5]:.4f}] | "
+                f"Center: ({cx:.4f}, {cy:.4f}, {cz:.4f}) | "
+                f"Points: {result['number_of_points']}, Cells: {result['number_of_cells']}"
+            )
+            return True, message, result
+
+        except Exception as e:
+            self.logger.error(f"get_data_bounds failed: {e}")
+            return False, f"Error getting data bounds: {e}", None
 
     def set_representation_type(self, rep_type):
         """

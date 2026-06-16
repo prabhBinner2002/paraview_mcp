@@ -455,7 +455,64 @@ def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "P
         
     print(f"[DEBUG] get_histogram result: success={success}, data_len={len(histogram_data) if histogram_data else 0}", file=sys.stderr, flush=True)
     return "\n".join(lines)
+
+@mcp.tool()
+def get_data_bounds() -> str:
+    """
+    Get the bounding box, center, and dimensions of the active dataset.
+    Use this before creating slices, streamlines, or photos to get exact coordinates.
+    
+    Returns:
+        Structured report of X/Y/Z bounds, dataset center, size and grid extent.
+    """
+    success, message, r = pv_manager.get_data_bounds()
+    
+    if not success:
+        return message
+    
+    b = r['bounds']
+    d = r['dimensions']
+    c = r['center']
+    
+    lines = []
  
+@mcp.tool()
+def get_data_bounds() -> str:
+    """
+    Get the bounding box, center, and dimensions of the active dataset.
+    Use this before creating slices, streamlines, or probes to get exact coordinates.
+
+    Returns:
+        Structured report of X/Y/Z bounds, dataset center, size, and grid extent.
+    """
+    success, message, r = pv_manager.get_data_bounds()
+    if not success:
+        return message
+
+    b = r['bounds']
+    d = r['dimensions']
+    c = r['center']
+
+    lines = [
+        "Data Bounds & Metadata",
+        f"X: [{b['x']['min']:.4f}, {b['x']['max']:.4f}]  (size: {d['x']:.4f})",
+        f"Y: [{b['y']['min']:.4f}, {b['y']['max']:.4f}]  (size: {d['y']:.4f})",
+        f"Z: [{b['z']['min']:.4f}, {b['z']['max']:.4f}]  (size: {d['z']:.4f})",
+        f"Center: ({c[0]:.4f}, {c[1]:.4f}, {c[2]:.4f})",
+        f"Points: {r['number_of_points']}  |  Cells: {r['number_of_cells']}",
+    ]
+
+    if "extent" in r:
+        e = r["extent"]
+        lines.append(
+            f"Grid Extent: "
+            f"I[{e['i']['min']}, {e['i']['max']}] "
+            f"J[{e['j']['min']}, {e['j']['max']}] "
+            f"K[{e['k']['min']}, {e['k']['max']}]"
+        )
+
+    return "\n".join(lines)
+
 @mcp.tool()
 def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "POINTS") -> str:
     """
