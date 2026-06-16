@@ -453,8 +453,7 @@ def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "P
         bar_len = int((freq / max_freq) * bar_width)
         lines.append(f"  {center:8.2f} | {'#' * bar_len} ({int(freq)})")
         
-        
-    stderr, flush=True)
+    
     return "\n".join(lines)
 
 @mcp.tool()
