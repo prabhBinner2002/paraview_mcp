@@ -421,7 +421,7 @@ def get_screenshot() -> str:
     with open(img_path, "rb") as file:
         img_data = file.read();
         
-    base64_encoded = base64.b64encoded(img_data).decode("utf-8")
+    base64_encoded = base64.b64encode(img_data).decode()
     
     return json.dumps({success: True, "data": base64_encoded, "path": img_path, "media_type": "img/png"})
  
