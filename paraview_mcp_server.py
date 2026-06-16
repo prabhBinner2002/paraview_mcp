@@ -231,26 +231,6 @@ def get_active_source_names_by_type(source_type: str = None) -> str:
     else:
         return message
 
-# @mcp.tool()
-# def edit_volume_opacity(field_name: str, opacity_points: list) -> str:
-#     """
-#     Edit ONLY the opacity transfer function for the specified field,
-#     ensuring we pass only (value, alpha) pairs.
-
-#     [Tips: only needed by volume rendering particularly finetuning the result, likely not needed when the color is ideal, usually the lower value should always have lower opacity]
-
-#     Args:
-#         field_name (str): The data array (field) name whose opacity we're adjusting.
-#         opacity_points (list of [value, alpha] pairs):
-#             Example: [[0.0, 0.0], [50.0, 0.3], [100.0, 1.0]]
-
-#     Returns:
-#         A status message (success or error)
-#     """
-#     success, message = pv_manager.edit_volume_opacity(field_name, opacity_points)
-#     return message
-
-# Compatible with OpenAI tool using
 @mcp.tool()
 def edit_volume_opacity(field_name: str, opacity_points: list[dict[str, float]]) -> str:
     """
@@ -268,26 +248,7 @@ def edit_volume_opacity(field_name: str, opacity_points: list[dict[str, float]])
     success, message = pv_manager.edit_volume_opacity(field_name, formatted_points)
     return message
 
-# @mcp.tool()
-# def set_color_map(field_name: str, color_points: list) -> str:
-#     """
-#     Sets the color transfer function for the specified field.
 
-#     [Tips: only volume rendering should be using the set_color_map function, the lower values range corresponds to lower density objects, whereas higher values indicate high physical density. When design the color mapping try to assess the object of interest's density first from the default colormap (low value assigned to blue, high value assigned to red) and re-assign customized color accordingly, the order of the color may need to be adjust based on the rendering result. The more solid object should have higher density (!high value range). And a screen_shot should always be taken once this function is called to assess how to adjust the color_map again.]
-
-#     Args:
-#         field_name (str): The name of the field/array (as it appears in ParaView).
-#         color_points (list of [value, [r, g, b]]):
-#             e.g., [[0.0, [0.0, 0.0, 1.0]], [50.0, [0.0, 1.0, 0.0]], [100.0, [1.0, 0.0, 0.0]]]
-#             Each element is (value, (r, g, b)) with r,g,b in [0,1].
-
-#     Returns:
-#         A status message as a string (e.g., success or error).
-#     """
-#     success, message = pv_manager.set_color_map(field_name, color_points)
-#     return message
-
-# Compatible with OpenAI tool using
 @mcp.tool()
 def set_color_map(field_name: str, color_points: list[dict]) -> str:
     """
@@ -347,20 +308,6 @@ def compute_surface_area() -> str:
     success, message, area_value = pv_manager.compute_surface_area()
     return message
 
-# @mcp.tool()
-# def set_color_map_preset(preset_name: str) -> str:
-#     """
-#     Set the color map (lookup table) for the current visualization.
-#     [tips: this should only be call at the beginning of the volume rendering]
-
-#     Args:
-#         preset_name: Name of the color map preset (e.g., "Rainbow", "Cool to Warm", "viridis")
-    
-#     Returns:
-#         Status message
-#     """
-#     success, message = pv_manager.set_color_map(preset_name)
-#     return message
 
 @mcp.tool()
 def set_representation_type(rep_type: str) -> str:
@@ -438,23 +385,103 @@ def create_streamline(seed_point_number: int, vector_field: str = None,
     else:
         return message
 
+# @mcp.tool()
+# def get_screenshot() -> str:
+#     """
+#     Capture a screenshot of the current view and display it in chat.
+    
+#     Args:
+#         display_in_chat: Whether to return the image data for display in chat
+    
+#     Returns:
+#         Image data or path
+#     """
+#     success, message, img_path = pv_manager.get_screenshot()    
+
+#     if not success:
+#         return message
+#     else:
+#         return Image(path=img_path)
+
 @mcp.tool()
 def get_screenshot() -> str:
     """
     Capture a screenshot of the current view and display it in chat.
     
-    Args:
-        display_in_chat: Whether to return the image data for display in chat
-    
     Returns:
-        Image data or path
+        Returns JSON with base64-encoded PNG.
     """
     success, message, img_path = pv_manager.get_screenshot()    
 
     if not success:
+        return json.dumps({"success": False, "error": message})
+    
+    with open(img_path, "rb") as file:
+        img_data = file.read();
+        
+    base64_encoded = base64.b64encoded(img_data).decode("utf-8")
+    
+    return json.dumps({success: True, "data": base64_encoded, "path": img_path, "media_type": "img/png"})
+ 
+@mcp.tool()
+def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "POINTS") -> str:
+    """
+    Computer and display a histogram for a scalar field.
+    Shows where values cluster - essential before designing a transfer function.
+    
+    Args: 
+        field: Array name to compute the histogram for. Auto-detected if only one array exists.
+        num_bins: Number of histogram bins (default: 64).
+        data_location: "POINTS" or "CELLS" (default: "POINTS").
+        
+    Returns:
+        ASCII bar chart of the histogram
+    """
+    print(f"[DEBUG] get_histogram called: field={field}, bins={num_bins}", file=sys.stderr, flush=True)
+    
+    success, message, histogram_data = pv_manager.get_histogram(field, num_bins, data_location)
+    
+    if not success or not histogram_data:
         return message
-    else:
-        return Image(path=img_path)
+    
+    max_freq = max(freq for  _ , freq in histogram_data) or 1
+    bar_width = 30
+    lines = [message, "", "Value       | Distribution"]
+    lines.append("-" * 50)
+    for center, freq in histogram_data:
+        bar_len = int((freq / max_freq) * bar_width)
+        lines.append(f"  {center:8.2f} | {'#' * bar_len} ({int(freq)})")
+        
+        
+    print(f"[DEBUG] get_histogram result: success={success}, data_len={len(histogram_data) if histogram_data else 0}", file=sys.stderr, flush=True)
+    return "\n".join(lines)
+ 
+@mcp.tool()
+def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "POINTS") -> str:
+    """
+    Compute and display a histogram for a scalar field.
+    Shows where values cluster — essential before designing a transfer function.
+
+    Args:
+        field: Array name to compute the histogram for. Auto-detected if only one array exists.
+        num_bins: Number of histogram bins (default: 64).
+        data_location: "POINTS" or "CELLS" (default: "POINTS").
+
+    Returns:
+        ASCII bar chart of the histogram.
+    """
+    success, message, histogram_data = pv_manager.get_histogram(field, num_bins, data_location)
+    if not success or not histogram_data:
+        return message
+
+    max_freq = max(freq for _, freq in histogram_data) or 1
+    bar_width = 30
+    lines = [message, "", "Value       | Distribution"]
+    lines.append("-" * 50)
+    for center, freq in histogram_data:
+        bar_len = int((freq / max_freq) * bar_width)
+        lines.append(f"  {center:8.2f} | {'#' * bar_len} ({int(freq)})")
+    return "\n".join(lines)
     
 @mcp.tool()
 def rotate_camera(azimuth: float = 30.0, elevation: float = 0.0) -> str:
@@ -482,23 +509,7 @@ def reset_camera() -> str:
     success, message = pv_manager.reset_camera()
     return message
 
-# @mcp.tool()
-# def plot_over_line(point1: list = None, point2: list = None, resolution: int = 100) -> str:
-#     """
-#     Create a 'Plot Over Line' filter to sample data along a line between two points.
 
-#     Args:
-#         point1 (list, optional): The [x, y, z] coordinates of the start point. If None, will use data bounds.
-#         point2 (list, optional): The [x, y, z] coordinates of the end point. If None, will use data bounds.
-#         resolution (int, optional): Number of sample points along the line (default: 100).
-
-#     Returns:
-#         Status message
-#     """
-#     success, message, plot_filter = pv_manager.plot_over_line(point1, point2, resolution)
-#     return message
-
-# Compatible with OpenAI tool using
 @mcp.tool()
 def plot_over_line(point1: list[float] = None, point2: list[float] = None, resolution: int = 100) -> str:
     """
