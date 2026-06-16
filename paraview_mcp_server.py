@@ -35,7 +35,7 @@ logging.basicConfig(
     ]
 )
 
-# Default prompt that instructs Claude how to interact with ParaView
+# Default prompt that instructs LLMs how to interact with ParaView
 default_prompt = """
 When using ParaView through this interface, please follow these guidelines:
 
@@ -53,8 +53,8 @@ logger = logging.getLogger("pv_external_mcp")
 # Create the ParaView manager
 pv_manager = ParaViewManager()
 
-# Initialize FastMCP server for Claude Desktop integration with default prompt
-mcp = FastMCP("ParaView", system_prompt=default_prompt)
+# Initialize FastMCP server
+mcp = FastMCP("ParaView")
 
 # ============================================================================
 # MCP Tools for ParaView
