@@ -515,7 +515,7 @@ def get_data_bounds() -> str:
 def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "POINTS") -> str:
     """
     Compute and display a histogram for a scalar field.
-    Shows where values cluster — essential before designing a transfer function.
+    Shows where values cluster, essential before designing a transfer function.
 
     Args:
         field: Array name to compute the histogram for. Auto-detected if only one array exists.
@@ -537,7 +537,43 @@ def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "P
         bar_len = int((freq / max_freq) * bar_width)
         lines.append(f"  {center:8.2f} | {'#' * bar_len} ({int(freq)})")
     return "\n".join(lines)
-    
+
+@mcp.tool()
+def get_gradient_stats(field_name: str, smoothed: bool = True) -> str:
+    """
+    Compute gradient magnitude stats (min, max, mean) for a scalar field.
+
+    Args:
+        field_name: Scalar array to compute gradients for.
+        smoothed: True = SMOOTHED boundary (better for ImageData/RAW volumes).
+    """
+    success, message, stats = pv_manager.get_gradient_stats(field_name, smoothed)
+    if not success:
+        return message
+    return (
+        f"Gradient magnitude for '{field_name}':\n"
+        f"  min  = {stats['min']:.4g}\n"
+        f"  max  = {stats['max']:.4g}\n"
+        f"  mean = {stats['mean']:.4g}"
+    )
+
+@mcp.tool()
+def set_gradient_opacity(gradient_opacity_points: list[dict]) -> str:
+    """
+    Enable gradient opacity on the active volume rendering.
+
+    Args:
+        gradient_opacity_points: list of {"gradient": float, "opacity": float}
+            Example: [{"gradient": 0,  "opacity": 0.0},
+                      {"gradient": 10, "opacity": 0.0},
+                      {"gradient": 50, "opacity": 1.0}]
+    """
+    points = [[p["gradient"], p["opacity"]] for p in gradient_opacity_points]
+    success, message = pv_manager.set_gradient_opacity(points)
+    if not success:
+        return message
+    return message
+
 @mcp.tool()
 def rotate_camera(azimuth: float = 30.0, elevation: float = 0.0) -> str:
     """

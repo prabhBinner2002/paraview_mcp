@@ -133,7 +133,6 @@ class ParaViewManager:
             self.logger.error(f"Error loading data: {str(e)}")
             return False, f"Error loading data: {str(e)}", None, ""
 
-    
     def _configure_raw_reader(self, file_path, file_name):
         """
         Configure a reader for RAW volume files
@@ -352,7 +351,6 @@ class ParaViewManager:
             self.logger.error(f"Error getting source names by type: {str(e)}")
             return False, f"Error getting source names by type: {str(e)}", []
 
-
     def create_isosurface(self, value, field=None):
         """
         Create or update an isosurface visualization of the loaded volume data.
@@ -523,8 +521,7 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error creating slice: {str(e)}")
             return False, f"Error creating slice: {str(e)}", None, None
-
-        
+    
     def create_volume_rendering(self, enable=True):
         """
         Toggle volume rendering for the loaded volume data.
@@ -696,7 +693,6 @@ class ParaViewManager:
             self.logger.error(f"Error coloring by field: {str(e)}")
             return False, f"Error coloring by field: {str(e)}"
 
-    
     def set_color_map(self, preset_name="Blue-Red"):
         """
         Set the color map (lookup table) for the current visualization.
@@ -1004,7 +1000,6 @@ class ParaViewManager:
             self.logger.error(f"Error editing opacity transfer function: {str(e)}")
             return False, f"Error editing opacity transfer function: {str(e)}"
 
-
     def set_color_map(self, field_name, color_points):
         """
         Sets the color transfer function for the given field (array) in ParaView.
@@ -1051,7 +1046,6 @@ class ParaViewManager:
         except Exception as e:
             msg = f"Error setting color map: {str(e)}"
             return False, msg
-
 
     def get_pipeline(self):
         """
@@ -1292,7 +1286,6 @@ class ParaViewManager:
             self.logger.error(f"Error getting screenshot: {str(e)}")
             return False, f"Error getting screenshot: {str(e)}", None
     
-
     def rotate_camera(self, azimuth=30.0, elevation=0.0):
         """
         Rotate the camera by specified angles.
@@ -1336,7 +1329,6 @@ class ParaViewManager:
             self.logger.error(f"Error resetting camera: {str(e)}")
             return False, f"Error resetting camera: {str(e)}"
     
-
     def plot_over_line(self, point1=None, point2=None, resolution=100):
         """
         Create a 'Plot Over Line' filter to sample data along a line between two points.
@@ -1423,3 +1415,68 @@ class ParaViewManager:
         except Exception as e:
             self.logger.error(f"Error creating warp by vector: {str(e)}")
             return False, f"Error creating warp by vector: {str(e)}", None
+
+    def get_gradient_stats(self, field_name, smoothed=True):
+        try:
+            from paraview.simple import GetActiveSource, Gradient, UpdatePipeline
+            import paraview.servermanager as sm
+
+            source = GetActiveSource()
+            if not source:
+                return False, "No active source.", None
+
+            grad = Gradient(Input=source)
+            grad.ScalarArray = ['POINTS', field_name]
+            grad.BoundaryMethod = 0 if smoothed else 1
+            UpdatePipeline(proxy=grad)
+
+            data = sm.Fetch(grad)
+            array = data.GetPointData().GetArray("Gradients")
+            if not array:
+                return False, "Gradient array not found.", None
+
+            n = array.GetNumberOfTuples()
+            magnitudes = []
+            for i in range(n):
+                x, y, z = array.GetTuple3(i)
+                magnitudes.append((x**2 + y**2 + z**2) ** 0.5)
+
+            return True, "OK", {"min": min(magnitudes), "max": max(magnitudes), "mean": sum(magnitudes) / n}
+        except Exception as e:
+            self.logger.error(f"Error computing gradient stats: {str(e)}")
+            return False, f"Error: {str(e)}", None
+
+    def set_gradient_opacity(self, gradient_opacity_points):
+        try:
+            from paraview.simple import GetActiveSource, GetActiveView, GetDisplayProperties
+
+            source = GetActiveSource()
+            if not source:
+                return False, "No active source."
+
+            view = GetActiveView()
+            if not view:
+                return False, "No active view."
+
+            display = GetDisplayProperties(source, view)
+            if not display:
+                return False, "Could not get display properties."
+
+            if not gradient_opacity_points or len(gradient_opacity_points) < 2:
+                return False, "Need at least 2 points."
+
+            display.EnableGradientOpacity = 1
+
+            grad_tf = display.GradientOpacityFunction
+            if not grad_tf:
+                return False, "No gradient opacity function found."
+
+            flat = []
+            for val, alpha in gradient_opacity_points:
+                flat.extend([val, alpha, 0.5, 0.0])
+            grad_tf.Points = flat
+
+            return True, f"Gradient opacity set with {len(gradient_opacity_points)} points."
+        except Exception as e:
+            self.logger.error(f"Error setting gradient opacity: {str(e)}")
+            return False, f"Error: {str(e)}"
