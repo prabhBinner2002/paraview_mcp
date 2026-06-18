@@ -527,25 +527,36 @@ def get_gradient_stats(field_name: str) -> str:
         f"Gradient magnitude for '{field_name}':\n"
         f"  min = {stats['min']:.4g}\n"
         f"  max = {stats['max']:.4g}\n"
-        f"Use these values with set_gradient_opacity."
+        f"Use get_gradient_histogram to see how gradient values are distributed."
     )
 
 @mcp.tool()
-def set_gradient_opacity(gradient_opacity_points: list[dict]) -> str:
+def get_gradient_histogram(field_name: str, num_bins: int = 64) -> str:
     """
-    Enable gradient opacity on the active volume rendering.
+    Compute gradient magnitude at every point and return a histogram of those values.
+
+    Workflow: call this first, then toggle_volume_rendering(True) on the result,
+    then edit_volume_opacity('Grad_Magnitude', [...]) to make surfaces opaque and
+    flat regions transparent.
 
     Args:
-        gradient_opacity_points: list of {"gradient": float, "opacity": float}
-            Example: [{"gradient": 0,  "opacity": 0.0},
-                      {"gradient": 10, "opacity": 0.0},
-                      {"gradient": 50, "opacity": 1.0}]
+        field_name: Scalar array name to compute gradients for.
+        num_bins: Number of histogram bins (default: 64).
     """
-    points = [[p["gradient"], p["opacity"]] for p in gradient_opacity_points]
-    success, message = pv_manager.set_gradient_opacity(points)
-    if not success:
+    success, message, histogram_data = pv_manager.get_gradient_histogram(field_name, num_bins)
+
+    if not success or not histogram_data:
         return message
-    return message
+
+    max_freq = max(freq for _, freq in histogram_data) or 1
+    bar_width = 30
+    lines = [message, "", "Gradient Magnitude | Distribution"]
+    lines.append("-" * 55)
+    for center, freq in histogram_data:
+        bar_len = int((freq / max_freq) * bar_width)
+        lines.append(f"  {center:10.4f} | {'#' * bar_len} ({int(freq)})")
+
+    return "\n".join(lines)
 
 @mcp.tool()
 def rotate_camera(azimuth: float = 30.0, elevation: float = 0.0) -> str:
@@ -632,8 +643,8 @@ def list_commands() -> str:
         "toggle_volume_rendering      : Enable or disable volume rendering",
         "edit_volume_opacity          : Set the scalar opacity transfer function",
         "set_color_map                : Set the color transfer function",
-        "get_gradient_stats           : Compute gradient magnitude stats (min/max/mean) for a field",
-        "set_gradient_opacity         : Enable gradient opacity to reveal surfaces in volume rendering",
+        "get_gradient_stats           : Compute gradient magnitude stats (min/max) for a field",
+        "get_gradient_histogram       : Compute gradient magnitude at every point and show its histogram",
 
         # Pipeline & State
         "get_pipeline                 : List all objects in the current pipeline",

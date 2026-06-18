@@ -791,32 +791,20 @@ class ParaViewManager:
 
             # Create and configure the Histogram filter.
             hist_filter = Histogram(Input=source)
-            # Set the input array from the chosen location (POINTS or CELLS).
+            
             hist_filter.SelectInputArray = [data_location, field]
-
-            # Set the number of bins via GetProperty to avoid creating new attributes.
-            nbins_prop = hist_filter.GetProperty("NumberOfBins")
-            if nbins_prop is None:
-                nbins_prop = hist_filter.GetProperty("BinCount")
-            if nbins_prop is None:
-                return False, "Error: Histogram filter does not have a 'NumberOfBins' or 'BinCount' property.", None
-            nbins_prop.SetElement(0, num_bins)
+            hist_filter.BinCount = num_bins
 
             # Update the pipeline to compute the histogram.
-            UpdatePipeline()
+            UpdatePipeline(proxy=hist_filter)
 
             # Fetch the computed histogram (returned as a vtkTable).
             hist_table = servermanager.Fetch(hist_filter)
             if hist_table.GetNumberOfRows() == 0:
                 return False, "Histogram computation returned empty data.", None
 
-            # Try to extract histogram data assuming columns named "bin_centers" and "bin_frequencies".
-            bin_centers_col = hist_table.GetColumnByName("bin_centers")
-            frequencies_col = hist_table.GetColumnByName("bin_frequencies")
-            # Fallback: use the first two columns if the expected names do not exist.
-            if not bin_centers_col or not frequencies_col:
-                bin_centers_col = hist_table.GetColumn(0)
-                frequencies_col = hist_table.GetColumn(1)
+            bin_centers_col = hist_table.GetColumnByName("bin_extents")
+            frequencies_col = hist_table.GetColumnByName("bin_values")
 
             histogram_data = []
             num_rows = hist_table.GetNumberOfRows()
@@ -1445,41 +1433,51 @@ class ParaViewManager:
             self.logger.error(f"Error computing gradient stats: {str(e)}")
             return False, f"Error: {str(e)}", None
 
-    def set_gradient_opacity(self, gradient_opacity_points):
+    def get_gradient_histogram(self, field_name, num_bins=64):
         try:
-            from paraview.simple import GetActiveSource, GetActiveView, GetDisplayProperties
-
+            import paraview.servermanager as sm
             source = GetActiveSource()
             if not source:
-                return False, "No active source."
+                return False, "No active source.", None
 
-            view = GetActiveView()
-            if not view:
-                return False, "No active view."
+            grad = Gradient(Input=source)
+            grad.ScalarArray = ['POINTS', field_name]
+            grad.ResultArrayName = f'{field_name}_Grad'
+            UpdatePipeline(proxy=grad)
 
-            display = GetDisplayProperties(source, view)
-            if not display:
-                return False, "Could not get display properties."
+            calc = Calculator(Input=grad)
+            calc.ResultArrayName = 'Grad_Magnitude'
+            calc.Function = f'mag({field_name}_Grad)'
+            UpdatePipeline(proxy=calc)
 
-            if not gradient_opacity_points or len(gradient_opacity_points) < 2:
-                return False, "Need at least 2 points."
+            SetActiveSource(calc)
 
-            display.EnableGradientOpacity = 1
+            hist_filter = Histogram(Input=calc)
+            hist_filter.SelectInputArray = ['POINTS', 'Grad_Magnitude']
+            hist_filter.BinCount = num_bins
+            UpdatePipeline(proxy=hist_filter)
 
-            grad_tf = display.GradientOpacityFunction
-            if not grad_tf:
-                return False, "No gradient opacity function found."
+            hist_table = sm.Fetch(hist_filter)
+            if hist_table.GetNumberOfRows() == 0:
+                return False, "Histogram returned empty data.", None
 
-            flat = []
-            for val, alpha in gradient_opacity_points:
-                flat.extend([val, alpha, 0.5, 0.0])
-            grad_tf.Points = flat
+            bin_centers_col = hist_table.GetColumnByName("bin_extents")
+            frequencies_col = hist_table.GetColumnByName("bin_values")
 
-            return True, f"Gradient opacity set with {len(gradient_opacity_points)} points."
+            histogram_data = []
+            for i in range(hist_table.GetNumberOfRows()):
+                histogram_data.append((bin_centers_col.GetValue(i), frequencies_col.GetValue(i)))
+
+            msg = (
+                f"Gradient histogram for '{field_name}' computed. "
+                f"Active source is now the gradient magnitude dataset. "
+                f"Use toggle_volume_rendering(True) then edit_volume_opacity('Grad_Magnitude', ...) to render surfaces."
+            )
+            return True, msg, histogram_data
         except Exception as e:
-            self.logger.error(f"Error setting gradient opacity: {str(e)}")
-            return False, f"Error: {str(e)}"
-        
+            self.logger.error(f"Error computing gradient histogram: {str(e)}")
+            return False, f"Error: {str(e)}", None
+
     def clear_pipeline(self):
         try:
             from paraview.simple import GetSources, Delete, SetActiveSource
