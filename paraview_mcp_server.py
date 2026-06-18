@@ -65,13 +65,14 @@ mcp = FastMCP("ParaView")
 @mcp.tool()
 def load_data(file_path: str) -> str:
     """
-    Load data from a file into ParaView.
-    
+    Load a data file into ParaView and register it as a source in the pipeline.
+    Supports VTK, VTU, VTS, EXODUS, CSV, RAW binary volumes, and other formats
+    ParaView natively reads. For RAW files, dimensions and scalar type are
+    auto-detected from the filename (e.g. foot_256x256x256_uint8.raw).
+    The loaded source becomes the active source and is shown in the render view.
+
     Args:
-        file_path: Path to the data file (supports VTK, EXODUS, CSV, RAW, etc.)
-    
-    Returns:
-        Status message
+        file_path: Absolute path to the file to load.
     """
     success, message, _, source_name = pv_manager.load_data(file_path)
     if success:
@@ -82,14 +83,14 @@ def load_data(file_path: str) -> str:
 @mcp.tool()
 def save_contour_as_stl(stl_filename: str = "contour.stl") -> str:
     """
-    Save the currently active contour (or any surface/mesh source) as an STL file
-    in the same folder as the originally loaded data.
+    Export the currently active source as an STL triangle mesh file.
+    The file is written to the same directory as the originally loaded data.
+    Works on any source that produces a surface — isosurfaces, slices, extracted surfaces,
+    or any geometry with triangle cells. Volumetric sources (vtkImageData) cannot be
+    directly exported as STL; apply a Contour or ExtractSurface filter first.
 
     Args:
-        stl_filename: The STL file name to use, defaults to 'contour.stl'.
-
-    Returns:
-        A status message (string).
+        stl_filename: Output filename including .stl extension (default: 'contour.stl').
     """
     success, message, path = pv_manager.save_contour_as_stl(stl_filename)
     return message
@@ -97,13 +98,13 @@ def save_contour_as_stl(stl_filename: str = "contour.stl") -> str:
 @mcp.tool()
 def create_source(source_type: str) -> str:
     """
-    Create a new geometric source.
-    
+    Create a parametric geometric source and add it to the pipeline.
+    These are synthetic objects with no associated scalar data — useful for
+    reference geometry, clipping planes, or testing visualization settings.
+    The created source becomes the active source and is shown in the render view.
+
     Args:
-        source_type: Type of source to create (Sphere, Cone, Cylinder, Plane, Box)
-    
-    Returns:
-        Status message
+        source_type: One of Sphere, Cone, Cylinder, Plane, Box.
     """
     success, message, _, source_name = pv_manager.create_source(source_type)
     if success:
@@ -114,14 +115,18 @@ def create_source(source_type: str) -> str:
 @mcp.tool()
 def create_isosurface(value: float, field: str = None) -> str:
     """
-    Create an isosurface visualization of the active source.
-    
+    Extract a surface from a volumetric dataset at a specific scalar value using
+    the Contour (marching cubes) filter. Every point on the resulting mesh has
+    exactly that scalar value — all voxels above the threshold contribute a face.
+    This is the primary technique for isolating structures by density: in CT data
+    a high isovalue (e.g. 1275) extracts bone, a lower one extracts soft tissue.
+    The isovalue must be within the scalar range of the field; use get_histogram
+    to identify meaningful thresholds. If field is None, the default scalar array
+    is used. The contour result is a triangle surface, not a volume.
+
     Args:
-        value: Isovalue
-        field: Optional field name to contour by
-    
-    Returns:
-        Status message
+        value: Scalar threshold at which to extract the surface.
+        field: Name of the scalar array to contour. Auto-selected if None.
     """
     success, message, contour_obj, contour_name = pv_manager.create_isosurface(value, field)
     if success:
@@ -134,15 +139,17 @@ def create_isosurface(value: float, field: str = None) -> str:
 def create_slice(origin_x: float = None, origin_y: float = None, origin_z: float = None,
                  normal_x: float = 0, normal_y: float = 0, normal_z: float = 1) -> str:
     """
-    Create a slice through the loaded volume data.
-    
+    Cut through the active dataset with an infinite plane and extract the 2D cross-section.
+    The result shows scalar values mapped onto the cut surface, making internal structure
+    visible without removing any geometry. The plane is defined by an origin point (any
+    point on the plane) and a normal vector (perpendicular to the plane surface).
+    Normal [0,0,1] gives a horizontal XY cut, [1,0,0] an YZ cut, [0,1,0] an XZ cut.
+    If origin is omitted, the center of the dataset's bounding box is used.
+    Use get_data_bounds to find exact coordinate ranges before choosing an origin.
+
     Args:
-        origin_x, origin_y, origin_z: Coordinates for the slice plane's origin. If None,
-            defaults to the data set's center.
-        normal_x, normal_y, normal_z: Normal vector for the slice plane (default [0, 0, 1]).
-    
-    Returns:
-        A string message containing success/failure details, plus the pipeline name.
+        origin_x, origin_y, origin_z: A point on the slice plane. Defaults to dataset center.
+        normal_x, normal_y, normal_z: Normal vector of the plane (default Z-axis [0,0,1]).
     """
     success, message, slice_filter, slice_name = pv_manager.create_slice(
         origin_x,
@@ -159,15 +166,16 @@ def create_slice(origin_x: float = None, origin_y: float = None, origin_z: float
 @mcp.tool()
 def toggle_volume_rendering(enable: bool = True) -> str:
     """
-    Toggle the visibility of volume rendering for the active source.
-    
+    Switch the originally loaded source to Volume representation and control its visibility.
+    Volume rendering ray-casts through the entire dataset, accumulating color and opacity
+    at every voxel along each sight line. Unlike isosurfaces, it shows the full interior
+    simultaneously — every voxel contributes based on its opacity transfer function value.
+    The opacity and color transfer functions (edit_volume_opacity, set_color_map) determine
+    which scalar ranges appear transparent or opaque. Setting enable=False hides the volume
+    without destroying the representation settings, so it can be re-shown without reconfiguring.
+
     Args:
-        enable (bool): Whether to show (True) or hide (False) volume rendering.
-                      If True, shows volume rendering (switching to 'Volume' representation if needed).
-                      If False, hides the volume but preserves the volume representation settings.
-    
-    Returns:
-        Status message
+        enable: True to switch to Volume representation and show it, False to hide it.
     """
        
     success, message, source_name = pv_manager.create_volume_rendering(enable)
@@ -180,15 +188,14 @@ def toggle_volume_rendering(enable: bool = True) -> str:
 @mcp.tool()
 def toggle_visibility(enable: bool = True) -> str:
     """
-    Toggle the visibility for the active source.
-    
+    Show or hide the active pipeline object in the render view without changing
+    its representation type or any other settings. Hiding an object removes it
+    from the rendered image while keeping it in the pipeline — it can be made
+    visible again without reconfiguring. Useful for comparing two objects by
+    toggling one off, or for decluttering the view while keeping filters intact.
+
     Args:
-        enable (bool): Whether to show (True) or hide (False) the active source.
-                      If True, makes the active source visible.
-                      If False, hides the active source but preserves the representation settings.
-    
-    Returns:
-        Status message
+        enable: True to make the active source visible, False to hide it.
     """
        
     success, message, source_name = pv_manager.toggle_visibility(enable)
@@ -202,12 +209,14 @@ def toggle_visibility(enable: bool = True) -> str:
 @mcp.tool()
 def set_active_source(name: str) -> str:
     """
-    Set the active pipeline object by its name.
+    Change which pipeline object is currently active. All filter operations,
+    representation changes, transfer function edits, and data queries act on
+    the active source. ParaView names sources automatically on creation
+    (e.g. Contour1, Slice1, Calculator1). Use get_pipeline to see all
+    registered names, or get_active_source_names_by_type to filter by type.
 
-    Usage:
-      set_active_source("Contour1")
-
-    Returns a status message.
+    Args:
+        name: The exact registered name of the pipeline object (case-sensitive).
     """
     success, message = pv_manager.set_active_source(name)
     return message
@@ -215,14 +224,15 @@ def set_active_source(name: str) -> str:
 @mcp.tool()
 def get_active_source_names_by_type(source_type: str = None) -> str:
     """
-    Get a list of source names filtered by their type.
+    List all registered pipeline objects, optionally filtered by their ParaView class name.
+    Returns the registered names that can be passed to set_active_source.
+    The type string is matched as a substring of the internal class name, so
+    'Contour' matches ContourFilter, 'Slice' matches Slice, etc.
+    When source_type is None, all pipeline objects are returned.
 
     Args:
-        source_type (str, optional): Filter sources by type (e.g., 'Sphere', 'Contour', etc.).
-                                  If None, returns all sources.
-
-    Returns:
-        A string message containing the source names or error message.
+        source_type: Partial class name to filter by (e.g. 'Contour', 'Slice', 'Calculator').
+                     None returns every object in the pipeline.
     """
     success, message, source_names = pv_manager.get_active_source_names_by_type(source_type)
     
@@ -236,15 +246,20 @@ def get_active_source_names_by_type(source_type: str = None) -> str:
 @mcp.tool()
 def edit_volume_opacity(field_name: str, opacity_points: list[dict[str, float]]) -> str:
     """
-    Edit ONLY the opacity transfer function for the specified field.
+    Set the 1D scalar opacity transfer function (OTF) for a named field.
+    The OTF is a piecewise linear curve that maps each scalar value to an opacity
+    between 0.0 (fully transparent) and 1.0 (fully opaque). During volume rendering,
+    every voxel's scalar value is looked up in this curve to determine how much it
+    contributes to the final image. Sparse regions (air, background) are typically
+    made transparent with alpha=0.0, while structures of interest are given higher
+    opacity. At least two control points are required; ParaView linearly interpolates
+    between them. The values must be within the actual scalar range of the field —
+    use get_histogram to identify the data range and value distribution.
 
     Args:
-        field_name (str): The scalar field to modify.
-        opacity_points (list): A list of dicts like:
-            [{"value": 0.0, "alpha": 0.0}, {"value": 50.0, "alpha": 0.3}]
-
-    Returns:
-        A status message (success or error)
+        field_name: The scalar array name whose OTF is being modified (e.g. 'ImageScalars', 'Grad_Magnitude').
+        opacity_points: Control points as [{"value": float, "alpha": float}, ...].
+                        value is the scalar value, alpha is opacity in [0.0, 1.0].
     """
     formatted_points = [[pt["value"], pt["alpha"]] for pt in opacity_points]
     success, message = pv_manager.edit_volume_opacity(field_name, formatted_points)
@@ -254,24 +269,20 @@ def edit_volume_opacity(field_name: str, opacity_points: list[dict[str, float]])
 @mcp.tool()
 def set_color_map(field_name: str, color_points: list[dict]) -> str:
     """
-    Sets the color transfer function for the specified field.
-
-    [Tips: only volume rendering should be using the set_color_map function, the lower values range corresponds to lower density objects, whereas higher values indicate high physical density. When design the color mapping try to assess the object of interest's density first from the default colormap (low value assigned to blue, high value assigned to red) and re-assign customized color accordingly, the order of the color may need to be adjust based on the rendering result. The more solid object should have higher density (!high value range). And a screen_shot should always be taken once this function is called to assess how to adjust the color_map again.]
+    Set a custom piecewise linear color transfer function (CTF) for a specific named
+    scalar array in ParaView. The CTF maps scalar values to RGB colors, controlling
+    what color each density or value level receives in volume rendering. Color points
+    are defined as (value, RGB) pairs; ParaView interpolates linearly between them.
+    In CT/density data, lower scalar values typically correspond to less dense material
+    (air, fluid) and higher values to denser material (bone, metal). The default ParaView
+    colormap maps low→blue and high→red. A custom CTF lets you assign perceptually
+    meaningful colors — e.g. bone as white/ivory, soft tissue as pink, air as fully
+    transparent (handled separately via edit_volume_opacity). Values must be within
+    the actual scalar range of the named field.
 
     Args:
-        field_name (str): The name of the field/array (as it appears in ParaView).
-        color_points (list of dicts): Each element should be a dict:
-            {"value": float, "rgb": [r, g, b]} where r,g,b ∈ [0,1].
-
-            Example:
-            [
-                {"value": 0.0, "rgb": [0.0, 0.0, 1.0]},
-                {"value": 50.0, "rgb": [0.0, 1.0, 0.0]},
-                {"value": 100.0, "rgb": [1.0, 0.0, 0.0]}
-            ]
-
-    Returns:
-        A status message (success or error).
+        field_name: The scalar array name to apply the CTF to (e.g. 'ImageScalars').
+        color_points: List of {"value": float, "rgb": [r, g, b]} dicts where r,g,b ∈ [0.0, 1.0].
     """
     # Transform color_points to expected internal format: list[tuple[float, tuple[float, float, float]]]
     try:
@@ -284,19 +295,38 @@ def set_color_map(field_name: str, color_points: list[dict]) -> str:
 
 
 @mcp.tool()
-def color_by(field: str, component: int = -1) -> str:
+def apply_color_preset(preset_name: str = "Blue-Red") -> str:
     """
-    Color the active visualization by a specific field.
-    This function first checks if the active source can be colored by fields
-    (i.e., it's a dataset with arrays) before attempting to apply colors.
-    [tips] Volume rendering should not use this function 
+    Apply a built-in ParaView color preset to the lookup table of the currently
+    active visualization. Presets are predefined perceptual color scales — for
+    example, Viridis and Plasma are perceptually uniform and colorblind-friendly;
+    Grayscale is useful for print; Cool to Warm encodes direction (negative/positive).
+    This replaces whatever custom color mapping is currently set on the active
+    representation's lookup table without modifying the opacity transfer function.
 
     Args:
-        field: Field name to color by
-        component: Component to color by (-1 for magnitude)
-    
-    Returns:
-        Status message
+        preset_name: Name of the ParaView preset. Common options: Blue-Red, Cool to Warm,
+                     Viridis, Plasma, Magma, Inferno, Rainbow, Grayscale.
+    """
+    success, message = pv_manager.apply_color_preset(preset_name)
+    return message
+
+
+@mcp.tool()
+def color_by(field: str, component: int = -1) -> str:
+    """
+    Color the active surface, mesh, or point-based representation by a scalar or
+    vector field. This assigns the field's values to the display color lookup table
+    so geometry is colored per-vertex or per-cell. For vector fields, component=-1
+    uses the magnitude, or pass 0/1/2 for X/Y/Z components individually.
+    This is intended for Surface, Wireframe, and Points representations.
+    Volume representations use set_color_map and edit_volume_opacity instead,
+    which operate on the transfer function rather than per-geometry coloring.
+    The color scale is automatically rescaled to the full data range of the field.
+
+    Args:
+        field: Name of the scalar or vector array to color by.
+        component: -1 for magnitude (default), 0 for X, 1 for Y, 2 for Z.
     """
     success, message = pv_manager.color_by(field, component)
     return message
@@ -304,8 +334,12 @@ def color_by(field: str, component: int = -1) -> str:
 @mcp.tool()
 def compute_surface_area() -> str:
     """
-    Compute the surface area of the currently active dataset.
-    NOTE: Must be a surface mesh or 'Area' array won't exist.
+    Compute the total surface area of the active source by integrating cell areas
+    using the IntegrateVariables filter. The active source must be a surface mesh —
+    triangle cells with an 'Area' cell array produced by integration. Volumetric
+    sources (vtkImageData, unstructured grids without surface cells) will not produce
+    a valid area result. Isosurface outputs (from create_isosurface) and slice outputs
+    are valid inputs. The result is the sum of all triangle areas in dataset units squared.
     """
     success, message, area_value = pv_manager.compute_surface_area()
     return message
@@ -314,15 +348,16 @@ def compute_surface_area() -> str:
 @mcp.tool()
 def set_representation_type(rep_type: str) -> str:
     """
-    Set the representation type for the active source.
-    
-    [Tips: This function should not be used for volume rendering]
+    Set how the active source's geometry is drawn in the render view.
+    Surface renders filled triangles, Wireframe renders only edges, Points renders
+    only vertices, Volume enables ray-cast volume rendering (same effect as
+    toggle_volume_rendering), and Outline renders only the bounding box.
+    Changing representation type does not alter the underlying data or pipeline —
+    it only affects the display. Transfer function settings (opacity, color map)
+    apply specifically to Volume mode.
 
     Args:
-        rep_type: Representation type (Surface, Wireframe, Points, etc.)
-    
-    Returns:
-        Status message
+        rep_type: One of Surface, Wireframe, Points, Volume, Surface With Edges, Outline.
     """
     success, message = pv_manager.set_representation_type(rep_type)
     return message
@@ -330,10 +365,10 @@ def set_representation_type(rep_type: str) -> str:
 @mcp.tool()
 def get_pipeline() -> str:
     """
-    Get the current pipeline structure.
-    
-    Returns:
-        Description of the current pipeline
+    List all sources and filters currently registered in the ParaView pipeline,
+    along with their internal class types. Each entry shows the registered name
+    (used by set_active_source) and the ParaView filter class it represents.
+    An empty pipeline means no data has been loaded or all objects were deleted.
     """
     success, message = pv_manager.get_pipeline()
     return message
@@ -341,12 +376,12 @@ def get_pipeline() -> str:
 @mcp.tool()
 def get_available_arrays() -> str:
     """
-    Get a list of available arrays in the active source.
-
-    [tips: normally volume rendering would not require this information]
-    
-    Returns:
-        List of available arrays
+    List all scalar and vector data arrays on the active source, separated into
+    point data (one value per vertex) and cell data (one value per element).
+    Each array entry includes its name and number of components — 1-component
+    arrays are scalars, 3-component arrays are typically vectors (velocity, gradient).
+    These names are required parameters for tools like color_by, edit_volume_opacity,
+    set_color_map, get_histogram, get_gradient_stats, and get_gradient_histogram.
     """
     success, message = pv_manager.get_available_arrays()
     return message
@@ -356,20 +391,23 @@ def create_streamline(seed_point_number: int, vector_field: str = None,
                      integration_direction: str = "BOTH", max_steps: int = 1000,
                      initial_step: float = 0.1, maximum_step: float = 50.0) -> str:
     """
-    Create streamlines from the loaded vector volume using the StreamTracer filter.
-    This function automatically generates seed points based on the data bounds.
-    
+    Trace particle paths through a vector field using the StreamTracer filter,
+    then wrap the resulting lines in tube geometry for visual thickness.
+    Seed points are distributed automatically in a point cloud centered on the
+    dataset's bounding box center. Each streamline follows the local vector
+    direction by numerical integration — FORWARD follows the field, BACKWARD
+    traces against it, BOTH does both from each seed. The result shows flow
+    patterns, circulation, or any directed field structure. Requires at least
+    one multi-component (vector) array in the active source; if vector_field
+    is None, the first array with more than one component is used automatically.
+
     Args:
-        seed_point_number (int): The number of seed points to automatically generate.
-        vector_field (str, optional): The name of the vector field to use for tracing. 
-                                    If None, the first vector field will be chosen automatically.
-        integration_direction (str): Integration direction ("FORWARD", "BACKWARD", or "BOTH"; default: "BOTH").
-        max_steps (int): Maximum number of integration steps (default: 1000).
-        initial_step (float): Initial integration step length (default: 0.1).
-        maximum_step (float): Maximum streamline length (default: 50.0).
-        
-    Returns:
-        str: Status message indicating whether the streamline was successfully created.
+        seed_point_number: Number of seed points placed in the point cloud.
+        vector_field: Name of the vector array to trace. Auto-detected if None.
+        integration_direction: "FORWARD", "BACKWARD", or "BOTH" (default).
+        max_steps: Maximum integration steps per streamline (default: 1000).
+        initial_step: Initial step size (default: 0.1).
+        maximum_step: Maximum streamline length before termination (default: 50.0).
     """
     # Call the stream tracer creation method in your ParaViewManager
     success, message, streamline, tube_name = pv_manager.create_stream_tracer(
@@ -387,31 +425,15 @@ def create_streamline(seed_point_number: int, vector_field: str = None,
     else:
         return message
 
-# @mcp.tool()
-# def get_screenshot() -> str:
-#     """
-#     Capture a screenshot of the current view and display it in chat.
-    
-#     Args:
-#         display_in_chat: Whether to return the image data for display in chat
-    
-#     Returns:
-#         Image data or path
-#     """
-#     success, message, img_path = pv_manager.get_screenshot()    
-
-#     if not success:
-#         return message
-#     else:
-#         return Image(path=img_path)
-
 @mcp.tool()
 def get_screenshot() -> str:
     """
-    Capture a screenshot of the current view and display it in chat.
-    
-    Returns:
-        Returns JSON with base64-encoded PNG.
+    Capture a PNG screenshot of the current ParaView render view and return it
+    as a base64-encoded string inside a JSON payload. The screenshot reflects
+    exactly what is currently visible in the GUI viewport — all visible sources,
+    the camera angle, lighting, and representation settings at the moment of capture.
+    The returned JSON contains keys: "success" (bool), "data" (base64 PNG string),
+    "path" (temp file path), and "media_type" ("img/png").
     """
     success, message, img_path = pv_manager.get_screenshot()    
 
@@ -428,16 +450,18 @@ def get_screenshot() -> str:
 @mcp.tool()
 def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "POINTS") -> str:
     """
-    Computer and display a histogram for a scalar field.
-    Shows where values cluster - essential before designing a transfer function.
-    
-    Args: 
-        field: Array name to compute the histogram for. Auto-detected if only one array exists.
-        num_bins: Number of histogram bins (default: 64).
-        data_location: "POINTS" or "CELLS" (default: "POINTS").
-        
-    Returns:
-        ASCII bar chart of the histogram
+    Compute the frequency distribution of scalar values across the active source
+    and display it as an ASCII bar chart. Each bin shows how many points (or cells)
+    have values in that range, revealing where values cluster, the spread of the data,
+    and whether there are distinct peaks (e.g. air, tissue, bone in CT data).
+    This distribution is the basis for designing meaningful opacity and color transfer
+    functions — sparse bins can be made transparent while dense peaks at structures
+    of interest are made opaque. If only one scalar array exists, field is auto-detected.
+
+    Args:
+        field: Array name to histogram. Auto-detected if the source has exactly one array.
+        num_bins: Number of equal-width bins across the scalar range (default: 64).
+        data_location: "POINTS" for vertex data, "CELLS" for cell-centered data (default: "POINTS").
     """
 
     success, message, histogram_data = pv_manager.get_histogram(field, num_bins, data_location)
@@ -459,11 +483,11 @@ def get_histogram(field: str = None, num_bins: int = 64, data_location: str = "P
 @mcp.tool()
 def get_active_source_state() -> str:
     """
-    Get the current state of the active source: name, type, visibility,
-    representation, opacity, and active color array.
-
-    Returns:
-        State report for the active source only.
+    Return the display state of the currently active pipeline object: its registered
+    name, internal ParaView class type, whether it is visible in the render view,
+    the current representation mode (Surface, Volume, Wireframe, etc.), the overall
+    opacity level, and which scalar array is currently driving its color mapping.
+    Useful for confirming what is actually rendered and how before making changes.
     """
     success, message, s = pv_manager.get_active_source_state()
     if not success:
@@ -477,11 +501,12 @@ def get_active_source_state() -> str:
 @mcp.tool()
 def get_data_bounds() -> str:
     """
-    Get the bounding box, center, and dimensions of the active dataset.
-    Use this before creating slices, streamlines, or probes to get exact coordinates.
-
-    Returns:
-        Structured report of X/Y/Z bounds, dataset center, size, and grid extent.
+    Return the spatial extents, center point, physical dimensions, total point
+    and cell counts, and (for structured grids) the IJK index extent of the active
+    dataset. Bounds are in the dataset's coordinate units. The center is the midpoint
+    of the bounding box. For structured volumes, the grid extent shows how many voxels
+    exist along each axis. These values are necessary inputs when placing slice planes,
+    streamline seeds, probe points, or any geometry that requires world-space coordinates.
     """
     success, message, r = pv_manager.get_data_bounds()
     if not success:
@@ -514,11 +539,18 @@ def get_data_bounds() -> str:
 @mcp.tool()
 def get_gradient_stats(field_name: str) -> str:
     """
-    Compute gradient magnitude stats (min, max) for a scalar field.
-    Call this before set_gradient_opacity to know the gradient range.
+    Compute the spatial gradient vector at every point of the named scalar field,
+    then calculate the gradient magnitude (L2 norm of the gradient vector) and return
+    its minimum and maximum values across the entire dataset. The gradient at each
+    point measures how rapidly the scalar changes in 3D space — a magnitude near zero
+    means a flat, uniform region; a large magnitude means a sharp boundary or edge.
+    Implemented as Gradient filter (produces a 3-component vector per point) followed
+    by a Calculator filter computing mag() of that vector. The result tells you the
+    full range of gradient magnitudes in the data, which is needed to design meaningful
+    opacity control points when volume rendering by gradient magnitude.
 
     Args:
-        field_name: Scalar array to compute gradients for.
+        field_name: Name of the scalar array to differentiate (e.g. 'ImageScalars').
     """
     success, message, stats = pv_manager.get_gradient_stats(field_name)
     if not success:
@@ -533,15 +565,21 @@ def get_gradient_stats(field_name: str) -> str:
 @mcp.tool()
 def get_gradient_histogram(field_name: str, num_bins: int = 64) -> str:
     """
-    Compute gradient magnitude at every point and return a histogram of those values.
-
-    Workflow: call this first, then toggle_volume_rendering(True) on the result,
-    then edit_volume_opacity('Grad_Magnitude', [...]) to make surfaces opaque and
-    flat regions transparent.
+    Compute the spatial gradient at every point of the named scalar field, calculate
+    the gradient magnitude (a single scalar per point representing how sharply the
+    field changes at that location), and return the frequency distribution of those
+    magnitudes as an ASCII bar chart. The pipeline built is: active source →
+    Gradient filter (produces per-point 3D gradient vector) → Calculator filter
+    (computes mag() to get a scalar magnitude) → Histogram filter (bins the magnitudes).
+    After this call, the active source in the pipeline is set to the Calculator output,
+    which holds the 'Grad_Magnitude' array. This means toggle_volume_rendering and
+    edit_volume_opacity('Grad_Magnitude', ...) act on the gradient magnitude volume,
+    making sharp boundaries opaque and uniform flat regions transparent — a surface
+    detection approach driven entirely by rate-of-change rather than absolute value.
 
     Args:
-        field_name: Scalar array name to compute gradients for.
-        num_bins: Number of histogram bins (default: 64).
+        field_name: Name of the scalar array to differentiate (e.g. 'ImageScalars').
+        num_bins: Number of equal-width histogram bins across the magnitude range (default: 64).
     """
     success, message, histogram_data = pv_manager.get_gradient_histogram(field_name, num_bins)
 
@@ -561,14 +599,17 @@ def get_gradient_histogram(field_name: str, num_bins: int = 64) -> str:
 @mcp.tool()
 def rotate_camera(azimuth: float = 30.0, elevation: float = 0.0) -> str:
     """
-    Rotate the camera by specified angles.
-    
+    Orbit the camera around the current focal point by the specified angles.
+    Azimuth rotates horizontally around the vertical axis (left/right orbit).
+    Elevation tilts the camera up or down relative to the focal point.
+    Angles are in degrees; positive azimuth orbits counter-clockwise when viewed
+    from above, positive elevation tilts upward. Rotations are incremental —
+    calling this multiple times compounds the rotation. Use reset_camera to
+    return to the default view fitting all data.
+
     Args:
-        azimuth: Rotation around vertical axis in degrees
-        elevation: Rotation around horizontal axis in degrees
-    
-    Returns:
-        Status message
+        azimuth: Horizontal orbit angle in degrees (default: 30.0).
+        elevation: Vertical tilt angle in degrees (default: 0.0).
     """
     success, message = pv_manager.rotate_camera(azimuth, elevation)
     return message
@@ -576,10 +617,10 @@ def rotate_camera(azimuth: float = 30.0, elevation: float = 0.0) -> str:
 @mcp.tool()
 def reset_camera() -> str:
     """
-    Reset the camera to show all data.
-    
-    Returns:
-        Status message
+    Reset the camera position, orientation, and zoom to fit all visible geometry
+    in the render view. The camera moves to a default isometric-style vantage point
+    that shows the full bounding box of all visible objects. Previously applied
+    rotations or zoom levels from rotate_camera are discarded.
     """
     success, message = pv_manager.reset_camera()
     return message
@@ -587,15 +628,19 @@ def reset_camera() -> str:
 @mcp.tool()
 def plot_over_line(point1: list[float] = None, point2: list[float] = None, resolution: int = 100) -> str:
     """
-    Create a 'Plot Over Line' filter to sample data along a line between two points.
+    Sample all scalar and vector arrays along a straight line through the active
+    dataset and display the results in a new XY chart view. The line is defined by
+    two world-space endpoints; ParaView interpolates the field values at evenly
+    spaced probe points along it. This is the standard method for extracting a 1D
+    profile through a 3D volume — useful for measuring how density, temperature,
+    pressure, or velocity changes along a chosen path. If endpoints are omitted,
+    ParaView uses the dataset's bounding box diagonal. Use get_data_bounds first
+    to obtain accurate world-space coordinates for the endpoints.
 
     Args:
-        point1 (list of float): The [x, y, z] coordinates of the start point. If None, will use data bounds.
-        point2 (list of float): The [x, y, z] coordinates of the end point. If None, will use data bounds.
-        resolution (int): Number of sample points along the line (default: 100).
-
-    Returns:
-        Status message
+        point1: [x, y, z] start point in world coordinates. Defaults to dataset bounds start.
+        point2: [x, y, z] end point in world coordinates. Defaults to dataset bounds end.
+        resolution: Number of evenly spaced sample points along the line (default: 100).
     """
     success, message, plot_filter = pv_manager.plot_over_line(point1, point2, resolution)
     return message
@@ -603,21 +648,31 @@ def plot_over_line(point1: list[float] = None, point2: list[float] = None, resol
 @mcp.tool()
 def warp_by_vector(vector_field: str = None, scale_factor: float = 1.0) -> str:
     """
-    Apply the 'Warp By Vector' filter to the active source.
+    Displace each point of the active source's geometry by a vector field, scaling
+    the displacement by scale_factor. Each vertex is moved by (vector * scale_factor)
+    in world space, deforming the mesh to visually encode the vector magnitude and
+    direction as physical shape change. This is commonly used to visualize structural
+    deformation (displacement fields from FEM simulations), flow-induced shape change,
+    or any dataset where a vector array represents per-point offset. The original
+    geometry is replaced in the view by the warped version. If vector_field is None,
+    the first array with more than one component is used automatically.
 
     Args:
-        vector_field (str, optional): The name of the vector field to use for warping. If None, the first available vector field will be used.
-        scale_factor (float, optional): The scale factor for the warp (default: 1.0).
-
-    Returns:
-        Status message
+        vector_field: Name of the 3-component vector array to warp by. Auto-detected if None.
+        scale_factor: Multiplier applied to the displacement vectors (default: 1.0).
     """
     success, message, warp_filter = pv_manager.warp_by_vector(vector_field, scale_factor)
     return message
 
 @mcp.tool()
 def clear_pipeline() -> str:
-    """Delete all sources and filters from the current pipeline."""
+    """
+    Delete every source and filter from the current ParaView pipeline, leaving
+    a completely empty state. This removes all loaded data, all filters (contours,
+    slices, calculators, etc.), and all associated display objects from the render view.
+    The internal reference to the originally loaded data source is also cleared.
+    This operation is irreversible — deleted pipeline objects cannot be recovered.
+    """
     success, message = pv_manager.clear_pipeline()
     return message
 
@@ -642,7 +697,8 @@ def list_commands() -> str:
         # Volume Rendering
         "toggle_volume_rendering      : Enable or disable volume rendering",
         "edit_volume_opacity          : Set the scalar opacity transfer function",
-        "set_color_map                : Set the color transfer function",
+        "set_color_map                : Set a custom RGB color transfer function for a named field",
+        "apply_color_preset           : Apply a named color preset (Viridis, Blue-Red, etc.) to the active vis",
         "get_gradient_stats           : Compute gradient magnitude stats (min/max) for a field",
         "get_gradient_histogram       : Compute gradient magnitude at every point and show its histogram",
 

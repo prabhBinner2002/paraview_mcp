@@ -693,22 +693,14 @@ class ParaViewManager:
             self.logger.error(f"Error coloring by field: {str(e)}")
             return False, f"Error coloring by field: {str(e)}"
 
-    def set_color_map(self, preset_name="Blue-Red"):
+    def apply_color_preset(self, preset_name="Blue-Red"):
         """
-        Set the color map (lookup table) for the current visualization.
-        
+        Apply a named color preset to the current visualization's lookup table.
+
         Args:
-            preset_name: Name of the color map preset.
-                        Available presets include (but are not limited to):
-                        - Blue-Red
-                        - Cool to Warm
-                        - Viridis
-                        - Plasma
-                        - Magma
-                        - Inferno
-                        - Rainbow
-                        - Grayscale
-                        
+            preset_name: Name of the preset (Blue-Red, Cool to Warm, Viridis, Plasma,
+                         Magma, Inferno, Rainbow, Grayscale, etc.)
+
         Returns:
             tuple: (success, message)
         """
@@ -717,22 +709,20 @@ class ParaViewManager:
             source = GetActiveSource()
             if not source:
                 return False, "Error: No active source. Load data first."
-            
+
             view = GetActiveView()
             display = GetDisplayProperties(source, view)
-            
+
             color_tf = display.LookupTable
             if not color_tf:
-                return False, "Error: No active color transfer function"
-            
-            # Apply the requested preset to the color transfer function.
+                return False, "Error: No active color transfer function."
+
             ApplyPreset(color_tf, preset_name, True)
-            
-            available_presets = "Blue-Red, Cool to Warm, Viridis, Plasma, Magma, Inferno, Rainbow, Grayscale"
-            return True, f"Applied color map preset: {preset_name}. Available presets include: {available_presets}"
+
+            return True, f"Applied color preset '{preset_name}'."
         except Exception as e:
-            self.logger.error(f"Error setting color map: {str(e)}")
-            return False, f"Error setting color map: {str(e)}"
+            self.logger.error(f"Error applying color preset: {str(e)}")
+            return False, f"Error applying color preset: {str(e)}"
 
     def get_histogram(self, field=None, num_bins=256, data_location="POINTS"):
         """
