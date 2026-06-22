@@ -1470,16 +1470,38 @@ class ParaViewManager:
 
     def clear_pipeline(self):
         try:
-            from paraview.simple import GetSources, Delete, SetActiveSource
+            from paraview.simple import GetSources, Delete, GetActiveView, Render
 
-            sources = GetSources()
-            if not sources:
+            if not GetSources():
                 return True, "Pipeline is already empty."
 
-            for (name, _), proxy in sources.items():
-                Delete(proxy)
+            # Delete in multiple passes, leaf-first. 
+            max_passes = 30
+            for _ in range(max_passes):
+                sources = GetSources()
+                if not sources:
+                    break
+                made_progress = False
+                for (name, _), proxy in list(sources.items()):
+                    try:
+                        if proxy.GetNumberOfConsumers() == 0:
+                            Delete(proxy)
+                            made_progress = True
+                    except Exception:
+                        pass
+                if not made_progress:
+                    break
 
             self.original_source = None
+
+            view = GetActiveView()
+            if view:
+                Render()
+
+            remaining = GetSources()
+            if remaining:
+                names = [n for (n, _) in remaining.keys()]
+                return False, f"Pipeline partially cleared. Still remaining: {names}"
             return True, "Pipeline cleared."
         except Exception as e:
             self.logger.error(f"Error clearing pipeline: {str(e)}")
