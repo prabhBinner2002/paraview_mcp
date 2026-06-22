@@ -23,6 +23,8 @@ class ParaViewManager:
         # which is needed for operations like volume rendering.
         self.original_source = None
         self._data_folder = ""
+        self._loaded_file_stem = "screenshot"
+        self._screenshot_counter = 0
     
     def _get_source_name(self, proxy):
         """
@@ -101,6 +103,8 @@ class ParaViewManager:
             
             # Record the directory of the loaded file so we can re-use it.
             self._data_folder = os.path.dirname(file_path)
+            self._loaded_file_stem = os.path.splitext(os.path.basename(file_path))[0]
+            self._screenshot_counter = 0
 
             # Get file extension
             _, file_extension = os.path.splitext(file_path)
@@ -1230,10 +1234,12 @@ class ParaViewManager:
         """
         try:
             from paraview.collaboration import processServerEvents
-            import tempfile
+            import tempfile, os
+            from datetime import datetime
             processServerEvents()
             from paraview import servermanager
             from paraview.simple import SetActiveView, RenderAllViews, SaveScreenshot, ResetCamera
+            
             
             # Get the active render view from the GUI connection
             pxm = servermanager.ProxyManager()
@@ -1253,13 +1259,19 @@ class ParaViewManager:
             SetActiveView(gui_view)
             RenderAllViews()
             
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                temp_path = tmp.name
+            self._screenshot_counter += 1
+            date_tag = datetime.now().strftime("%d-%b")
+            stem = self._loaded_file_stem or "screenshot"
+            filename = f"{stem}#{self._screenshot_counter}|{date_tag}.png"
             
-            SaveScreenshot(temp_path, gui_view)
-            # SaveScreenshot(temp_path, gui_view, ImageResolution=[1920, 1080])            
-            return True, "Screenshot captured", temp_path
+            if self._data_folder:
+                save_path = os.path.join(self._data_folder, filename)
+            else:
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    save_path = tmp.name
+            
+            SaveScreenshot(save_path, gui_view)
+            return True, "Screenshot captured", save_path
         except Exception as e:
             self.logger.error(f"Error getting screenshot: {str(e)}")
             return False, f"Error getting screenshot: {str(e)}", None
@@ -1394,79 +1406,69 @@ class ParaViewManager:
             self.logger.error(f"Error creating warp by vector: {str(e)}")
             return False, f"Error creating warp by vector: {str(e)}", None
 
-    def get_gradient_stats(self, field_name):
-        try:
-            from paraview.simple import GetActiveSource, Gradient, UpdatePipeline, Calculator
-            source = GetActiveSource()
-            if not source:
-                return False, "No active source.", None
+        def get_gradient_histogram(self, field_name, num_bins=64):
+            """
+            Build a Gradient -> Calculator -> Histogram pipeline on the named scalar field.
+            Extracts the exact gradient magnitude min/max from the Calculator before binning,
+            so no separate get_gradient_stats call is needed. Active source is set to the
+            Calculator output after this call.
+            """
+            try:
+                import paraview.servermanager as sm
+                source = GetActiveSource()
+                if not source:
+                    return False, "No active source.", None
 
-            grad = Gradient(Input=source)
-            grad.ScalarArray = ['POINTS', field_name]
-            grad.ResultArrayName = f'{field_name}_Grad'
-            grad.BoundaryMethod = 0  # SMOOTHED, Default set to Non-Smoothed in paraview Properties
+                grad = Gradient(Input=source)
+                grad.ScalarArray = ['POINTS', field_name]
+                grad.ResultArrayName = f'{field_name}_Grad'
+                UpdatePipeline(proxy=grad)
 
-            calc = Calculator(Input=grad)
-            calc.ResultArrayName = 'Grad_Magnitude'
-            calc.Function = f'mag({field_name}_Grad)'
-            UpdatePipeline(proxy=calc)
+                calc = Calculator(Input=grad)
+                calc.ResultArrayName = 'Grad_Magnitude'
+                calc.Function = f'mag({field_name}_Grad)'
+                UpdatePipeline(proxy=calc)
 
-            array_info = (calc.GetDataInformation()
-                            .GetPointDataInformation()
-                            .GetArrayInformation('Grad_Magnitude'))
-            if not array_info:
-                return False, "Could not get gradient magnitude info.", None
+                # Extract min/max while Calculator data is already in memory
+                array_info = (calc.GetDataInformation()
+                                .GetPointDataInformation()
+                                .GetArrayInformation('Grad_Magnitude'))
+                if array_info:
+                    grad_min, grad_max = array_info.GetComponentRange(0)
+                else:
+                    grad_min, grad_max = None, None
 
-            min_val, max_val = array_info.GetComponentRange(0)
-            return True, "OK", {"min": min_val, "max": max_val}
-        except Exception as e:
-            self.logger.error(f"Error computing gradient stats: {str(e)}")
-            return False, f"Error: {str(e)}", None
+                SetActiveSource(calc)
 
-    def get_gradient_histogram(self, field_name, num_bins=64):
-        try:
-            import paraview.servermanager as sm
-            source = GetActiveSource()
-            if not source:
-                return False, "No active source.", None
+                hist_filter = Histogram(Input=calc)
+                hist_filter.SelectInputArray = ['POINTS', 'Grad_Magnitude']
+                hist_filter.BinCount = num_bins
+                UpdatePipeline(proxy=hist_filter)
 
-            grad = Gradient(Input=source)
-            grad.ScalarArray = ['POINTS', field_name]
-            grad.ResultArrayName = f'{field_name}_Grad'
-            UpdatePipeline(proxy=grad)
+                hist_table = sm.Fetch(hist_filter)
+                if hist_table.GetNumberOfRows() == 0:
+                    return False, "Histogram returned empty data.", None
 
-            calc = Calculator(Input=grad)
-            calc.ResultArrayName = 'Grad_Magnitude'
-            calc.Function = f'mag({field_name}_Grad)'
-            UpdatePipeline(proxy=calc)
+                bin_centers_col = hist_table.GetColumnByName("bin_extents")
+                frequencies_col = hist_table.GetColumnByName("bin_values")
 
-            SetActiveSource(calc)
+                histogram_data = []
+                for i in range(hist_table.GetNumberOfRows()):
+                    histogram_data.append((bin_centers_col.GetValue(i), frequencies_col.GetValue(i)))
 
-            hist_filter = Histogram(Input=calc)
-            hist_filter.SelectInputArray = ['POINTS', 'Grad_Magnitude']
-            hist_filter.BinCount = num_bins
-            UpdatePipeline(proxy=hist_filter)
+                stats_line = ""
+                if grad_min is not None:
+                    stats_line = f" Gradient magnitude range: min={grad_min:.4f}, max={grad_max:.4f}."
 
-            hist_table = sm.Fetch(hist_filter)
-            if hist_table.GetNumberOfRows() == 0:
-                return False, "Histogram returned empty data.", None
-
-            bin_centers_col = hist_table.GetColumnByName("bin_extents")
-            frequencies_col = hist_table.GetColumnByName("bin_values")
-
-            histogram_data = []
-            for i in range(hist_table.GetNumberOfRows()):
-                histogram_data.append((bin_centers_col.GetValue(i), frequencies_col.GetValue(i)))
-
-            msg = (
-                f"Gradient histogram for '{field_name}' computed. "
-                f"Active source is now the gradient magnitude dataset. "
-                f"Use toggle_volume_rendering(True) then edit_volume_opacity('Grad_Magnitude', ...) to render surfaces."
-            )
-            return True, msg, histogram_data
-        except Exception as e:
-            self.logger.error(f"Error computing gradient histogram: {str(e)}")
-            return False, f"Error: {str(e)}", None
+                msg = (
+                    f"Gradient histogram for '{field_name}' computed.{stats_line}"
+                    f" Active source is now the gradient magnitude dataset."
+                    f" Use toggle_volume_rendering(True) then edit_volume_opacity('Grad_Magnitude', ...) to render surfaces."
+                )
+                return True, msg, histogram_data
+            except Exception as e:
+                self.logger.error(f"Error computing gradient histogram: {str(e)}")
+                return False, f"Error: {str(e)}", None
 
     def clear_pipeline(self):
         try:
