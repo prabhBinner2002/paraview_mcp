@@ -1468,7 +1468,8 @@ class ParaViewManager:
             )
             return True, msg, histogram_data
         except Exception as e:
-            self.logger.error(f"Error computing gradient histogram: {str(e)}")
+            import traceback
+            self.logger.error("Error computing gradient histogram:\n" + traceback.format_exc())
             return False, f"Error: {str(e)}", None
 
     def clear_pipeline(self):
