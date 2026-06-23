@@ -1415,6 +1415,9 @@ class ParaViewManager:
         """
         try:
             import paraview.servermanager as sm
+            from paraview.simple import (GetActiveSource, SetActiveSource,
+                                      Gradient, Calculator, Histogram,
+                                      UpdatePipeline)
             source = GetActiveSource()
             if not source:
                 return False, "No active source.", None
@@ -1468,8 +1471,7 @@ class ParaViewManager:
             )
             return True, msg, histogram_data
         except Exception as e:
-            import traceback
-            self.logger.error("Error computing gradient histogram:\n" + traceback.format_exc())
+            self.logger.error(f"Error computing gradient histogram: {str(e)}")
             return False, f"Error: {str(e)}", None
 
     def clear_pipeline(self):
