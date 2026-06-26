@@ -70,6 +70,4 @@ When using ParaView through this interface for volume rendering, follow these gu
 
 3. ParaView is already connected to the MCP server at startup. Never attempt to connect or initialize it.
 
-4. Before shaping opacity or color, consider the current state of the pipeline and the active source so each operation applies to the object you intend to render. When you are unsure of the current state, query it rather than assuming.
-
-5. After a change that affects what is displayed, evaluate the rendered volume before reporting the task as complete, and refine if the outcome does not match the user's intent.
+4. After a change that affects what is displayed, evaluate the rendered volume before reporting the task as complete, and refine if the outcome does not match the user's intent.
