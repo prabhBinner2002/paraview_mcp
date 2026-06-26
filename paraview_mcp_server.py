@@ -507,34 +507,54 @@ def get_data_bounds() -> str:
 
     return "\n".join(lines)
 
-@mcp.tool()
-@timed_tool
-def get_gradient_histogram(field_name: str, num_bins: int = 64) -> str:
-    """
-    Compute the spatial gradient at every point of the named scalar field, calculate the gradient magnitude (a single scalar per point representing how sharply the field changes at that location), and return both the exact magnitude range and the frequency distribution of those magnitudes as an ASCII bar chart. The pipeline built is: active source -> Gradient filter (produces a per-point 3D gradient vector)
-    -> Calculator filter (computes mag() to produce a scalar magnitude) -> Histogram filter (bins the magnitudes). The exact min and max of the gradient magnitude are extracted directly from the Calculator output before binning. After this call, the active source in the pipeline is set to the Calculator output, which holds the 'Grad_Magnitude' array. This means toggle_volume_rendering and edit_volume_opacity('Grad_Magnitude', ...) act on the gradient magnitude volume, making sharp boundaries opaque and uniform flat regions transparent, a surface detection approach driven entirely by rate-of-change rather than absolute value.
-
-    Args:
-        field_name: Name of the scalar array to differentiate (e.g. 'ImageScalars').
-        num_bins: Number of equal-width histogram bins across the magnitude range (default: 64).
-
-    Returns:
-        ASCII bar chart of the gradient magnitude distribution with bin centers, bar lengths scaled to the peak frequency, and raw counts per bin. The header line reports the exact min and max gradient magnitude. Active source is changed to the Calculator output as a side effect.
-    """
-    success, message, histogram_data = pv_manager.get_gradient_histogram(field_name, num_bins)
-
-    if not success or not histogram_data:
-        return message
-
-    max_freq = max(freq for _, freq in histogram_data) or 1
+def _gradient_histogram_chart(message, histogram_data):
+    """Render a (bin_center, frequency) list as an ASCII bar chart under message."""
+    max_freq = 1
+    for _, freq in histogram_data:
+        if freq > max_freq:
+            max_freq = freq
     bar_width = 30
     lines = [message, "", "Gradient Magnitude | Distribution"]
     lines.append("-" * 55)
     for center, freq in histogram_data:
         bar_len = int((freq / max_freq) * bar_width)
         lines.append(f"  {center:10.4f} | {'#' * bar_len} ({int(freq)})")
-
     return "\n".join(lines)
+
+@mcp.tool()
+@timed_tool
+def apply_gradient(field_name: str, result_array_name: str = "Gradient",
+                   num_bins: int = 256, data_location: str = "POINTS") -> str:
+    """
+    Apply ParaView's Gradient filter to a named scalar array on the current active source, then
+    compute and return the distribution of the resulting gradient magnitude as an ASCII bar chart.
+    The Gradient filter produces a 3-component vector array (default name 'Gradient') giving the
+    direction and rate of change of the field at every point. The magnitude of that vector measures
+    how sharply the field changes at each location, so high magnitudes mark material boundaries and
+    edges while low magnitudes mark flat, uniform regions. The magnitude histogram is computed
+    server-side by selecting the 'Magnitude' component of the gradient array in the Histogram filter,
+    so no intermediate scalar array is materialized and no volume data is transferred to the client.
+    After this call the newly created Gradient filter is left as the active source, ready for volume
+    rendering of the gradient field by shaping opacity on the gradient magnitude.
+
+    Args:
+        field_name: Name of the input scalar array to differentiate (for example 'ImageFile').
+        result_array_name: Name to give the output 3-component gradient array (default 'Gradient').
+        num_bins: Number of equal-width bins across the magnitude range (default: 256).
+        data_location: 'POINTS' (default) or 'CELLS', selecting which association the input array lives on.
+
+    Returns:
+        ASCII bar chart of the gradient magnitude distribution with bin centers, bars scaled to the
+        peak frequency, and raw counts per bin. The header line reports the bin count and the
+        magnitude min and max. The Gradient filter becomes the active source as a side effect.
+    """
+    success, message, _proxy, _name, histogram_data = pv_manager.apply_gradient(
+        field_name, result_array_name, num_bins, data_location)
+
+    if not success or not histogram_data:
+        return message
+
+    return _gradient_histogram_chart(message, histogram_data)
 
 @mcp.tool()
 @timed_tool
@@ -618,8 +638,7 @@ def list_commands() -> str:
         "edit_volume_opacity          : Set the scalar opacity transfer function",
         "set_color_map                : Set a custom RGB color transfer function for a named field",
         "apply_color_preset           : Apply a named color preset (Viridis, Blue-Red, etc.) to the active vis",
-        "get_gradient_stats           : Compute gradient magnitude stats (min/max) for a field",
-        "get_gradient_histogram       : Compute gradient magnitude at every point and show its histogram",
+        "apply_gradient               : Apply the Gradient filter to a field and show its magnitude histogram",
 
         # Pipeline & State
         "get_pipeline                 : List all objects in the current pipeline",

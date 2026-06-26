@@ -1406,73 +1406,85 @@ class ParaViewManager:
             self.logger.error(f"Error creating warp by vector: {str(e)}")
             return False, f"Error creating warp by vector: {str(e)}", None
 
-    def get_gradient_histogram(self, field_name, num_bins=64):
+    def apply_gradient(self, field_name, result_array_name='Gradient', num_bins=256,
+                   data_location="POINTS"):
         """
-        Build a Gradient -> Calculator -> Histogram pipeline on the named scalar field.
-        Extracts the exact gradient magnitude min/max from the Calculator before binning,
-        so no separate get_gradient_stats call is needed. Active source is set to the
-        Calculator output after this call.
+        Apply the Gradient filter to the named scalar field on the active source and
+        return the gradient-magnitude histogram alongside the gradient proxy.
+
+        The Gradient filter outputs a 3-component vector array (default name 'Gradient').
+        It does NOT store a separate magnitude scalar; magnitude is derived on demand by
+        selecting the 'Magnitude' component in the Histogram filter. The new Gradient filter is
+        left as the active source.
+
+        Args:
+            field_name (str): Name of the input scalar array to differentiate.
+            result_array_name (str): Name for the output vector array (default 'Gradient').
+            num_bins (int): Number of histogram bins for the magnitude histogram.
+            data_location (str): "POINTS" (default) or "CELLS".
+
+        Returns:
+            tuple: (success, message, gradient_proxy, gradient_name, histogram_data)
+                histogram_data is a list of (bin_center, frequency) tuples.
         """
         try:
             import paraview.servermanager as sm
             from paraview.simple import (GetActiveSource, SetActiveSource,
-                                      Gradient, Calculator, Histogram,
-                                      UpdatePipeline)
+                                        Gradient, Histogram, UpdatePipeline)
+
             source = GetActiveSource()
             if not source:
-                return False, "No active source.", None
+                return False, "Error: No active source. Load data first.", None, "", None
 
+            data_location = data_location.upper()
+
+            # Stage 1: gradient (3-component vector).
             grad = Gradient(Input=source)
-            grad.ScalarArray = ['POINTS', field_name]
-            grad.ResultArrayName = f'{field_name}_Grad'
+            grad.ScalarArray = [data_location, field_name]
+            grad.ResultArrayName = result_array_name
             UpdatePipeline(proxy=grad)
 
-            calc = Calculator(Input=grad)
-            calc.ResultArrayName = 'Grad_Magnitude'
-            calc.Function = f'mag({field_name}_Grad)'
-            UpdatePipeline(proxy=calc)
+            SetActiveSource(grad)
+            grad_name = self._get_source_name(grad)
 
-            # Extract min/max while Calculator data is already in memory —
-            # must be done before any Delete call invalidates the proxy.
-            array_info = (calc.GetDataInformation()
-                            .GetPointDataInformation()
-                            .GetArrayInformation('Grad_Magnitude'))
-            if array_info:
-                grad_min, grad_max = array_info.GetComponentRange(0)
-            else:
-                grad_min, grad_max = None, None
-
-            SetActiveSource(calc)
-
-            hist_filter = Histogram(Input=calc)
-            hist_filter.SelectInputArray = ['POINTS', 'Grad_Magnitude']
+            # Stage 2: histogram the magnitude component, server-side.
+            hist_filter = Histogram(Input=grad)
+            hist_filter.SelectInputArray = [data_location, result_array_name]
+            hist_filter.Component = 'Magnitude'
             hist_filter.BinCount = num_bins
             UpdatePipeline(proxy=hist_filter)
 
             hist_table = sm.Fetch(hist_filter)
             if hist_table.GetNumberOfRows() == 0:
-                return False, "Histogram returned empty data.", None
+                return False, "Gradient computed but histogram returned empty data.", grad, grad_name, None
 
-            bin_centers_col = hist_table.GetColumnByName("bin_extents")
-            frequencies_col = hist_table.GetColumnByName("bin_values")
+            bin_extents_col = hist_table.GetColumnByName("bin_extents")
+            bin_values_col = hist_table.GetColumnByName("bin_values")
 
             histogram_data = []
-            for i in range(hist_table.GetNumberOfRows()):
-                histogram_data.append((bin_centers_col.GetValue(i), frequencies_col.GetValue(i)))
+            num_rows = hist_table.GetNumberOfRows()
+            for i in range(num_rows):
+                bin_center = bin_extents_col.GetValue(i)
+                frequency = bin_values_col.GetValue(i)
+                histogram_data.append((bin_center, frequency))
 
-            stats_line = ""
-            if grad_min is not None:
-                stats_line = f" Gradient magnitude range: min={grad_min:.4f}, max={grad_max:.4f}."
+            grad_min = bin_extents_col.GetValue(0)
+            grad_max = bin_extents_col.GetValue(num_rows - 1)
+
+            # Leave the gradient (not the histogram table) as the active source.
+            SetActiveSource(grad)
 
             msg = (
-                f"Gradient histogram for '{field_name}' computed.{stats_line}"
-                f" Active source is now the gradient magnitude dataset."
-                f" Use toggle_volume_rendering(True) then edit_volume_opacity('Grad_Magnitude', ...) to render surfaces."
+                "Gradient computed for '%s' -> '%s' (3-component vector). "
+                "Magnitude histogram: %d bins, range min=%.4f, max=%.4f. "
+                "Active source is now the gradient."
+                % (field_name, result_array_name, num_bins, grad_min, grad_max)
             )
-            return True, msg, histogram_data
+            return True, msg, grad, grad_name, histogram_data
+
         except Exception as e:
-            self.logger.error(f"Error computing gradient histogram: {str(e)}")
-            return False, f"Error: {str(e)}", None
+            self.logger.error(f"Error applying gradient: {str(e)}")
+            return False, f"Error applying gradient: {str(e)}", None, "", None
 
     def clear_pipeline(self):
         try:
