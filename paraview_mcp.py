@@ -40,19 +40,6 @@ logging.basicConfig(
     ]
 )
 
-# Default prompt that instructs LLMs how to interact with ParaView
-default_prompt = """
-When using ParaView through this interface, please follow these guidelines:
-
-1. IMPORTANT: Only call strictly necessary ParaView functions per reply (and please limit the total number of call per reply). This ensures operations execute in a more interative manner and no excessive calls to related but non-essential functions.
-
-2. The only execute multiple repeated function call when given a target goal (e.g., identify a specific object), where different parameters need to used (e.g., isosurface with different isovalue). Avoid repeated calling of color map function unless user specific ask for color map design.
-
-3. Paraview will be connect to mcp server on starup so no need to connect first.
-
-
-"""
-
 logger = logging.getLogger("pv_external_mcp")
 
 def log_startup_banner():
