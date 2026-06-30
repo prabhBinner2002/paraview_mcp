@@ -1270,7 +1270,7 @@ class ParaViewManager:
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                     save_path = tmp.name
             
-            SaveScreenshot(save_path, gui_view)
+            SaveScreenshot(save_path, gui_view, OverrideColorPalette="White Background")
             # SaveScreenshot(save_path, gui_view,
             #                ImageResolution=[1280, 1280],
             #                OverrideColorPalette="White Background")
