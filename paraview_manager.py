@@ -1270,9 +1270,10 @@ class ParaViewManager:
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                     save_path = tmp.name
             
-            SaveScreenshot(save_path, gui_view,
-                           ImageResolution=[1280, 1280],
-                           OverrideColorPalette="White Background")
+            SaveScreenshot(save_path, gui_view)
+            # SaveScreenshot(save_path, gui_view,
+            #                ImageResolution=[1280, 1280],
+            #                OverrideColorPalette="White Background")
             return True, "Screenshot captured", save_path
         except Exception as e:
             self.logger.error(f"Error getting screenshot: {str(e)}")
